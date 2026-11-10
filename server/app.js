@@ -4,7 +4,8 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const { freeSlots, checkRanges, ACTIVE } = require("./availability");
 const { isDay, addDays, nowIn, fmtTime, weekday } = require("./time");
-const { render: renderEmail } = require("./emails");
+const { render: renderEmail, renderReset } = require("./emails");
+const { hashPassword, verifyPassword, DUMMY, newToken, tokenHash, parseCookies } = require("./auth");
 const { createMailer } = require("./mailer");
 
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
@@ -34,11 +35,23 @@ function limiter(max, windowMs) {
 }
 
 function createApp({ repo, config, env = process.env, clock = () => new Date(), notify, mailer }) {
-  const services = new Map(config.services.map((s) => [s.id, s]));
+  /* ---------- Servicios ---------- */
+  // La primera vez se copian de config.services. Después se administran desde el panel.
+  if (!repo.serviceCount()) {
+    config.services.forEach((s, i) => repo.serviceSave({ id: s.id, category: s.cat, name: s.name,
+      description: s.desc || "", price: s.price ?? null, minutes: s.min, popular: !!s.popular, active: true, sort: i * 10 }));
+  }
+  // Formato que usan la app y las plantillas de correo.
+  const toPublicService = (s) => ({ id: s.id, cat: s.category, name: s.name, price: s.price, min: s.minutes,
+    desc: s.description, popular: s.popular });
+  const configForEmail = () => ({ ...config, services: repo.services().map(toPublicService) });
   const secret = env.ADMIN_SECRET || crypto.randomBytes(32).toString("hex");
   const adminPin = env.ADMIN_PIN || "";
   const bookingLimit = limiter(Number(env.BOOKING_RATE_LIMIT || 8), 60 * 60 * 1000);
   const loginLimit = limiter(6, 15 * 60 * 1000);
+  const userLoginLimit = limiter(Number(env.LOGIN_RATE_LIMIT || 10), 15 * 60 * 1000);
+  const registerLimit = limiter(Number(env.REGISTER_RATE_LIMIT || 6), 60 * 60 * 1000);
+  const SESSION_DAYS = 60;
   const send = notify || makeNotifier(env.NOTIFY_URL);
   const mail = mailer || createMailer(env);
   const publicUrl = (env.PUBLIC_URL || "").replace(/\/+$/, "");
@@ -54,9 +67,9 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
   function emailClient(kind, b, req, extra = {}) {
     if (!b.email) return false;
     const site = siteUrl(req);
-    const link = site ? `${site}/?cita=${encodeURIComponent(b.id)}&t=${encodeURIComponent(b.token)}` : null;
+    const link = site ? `${site}/?citas=1` : null;
     let msg;
-    try { msg = renderEmail(kind, b, config, { link, siteUrl: site, ...extra }); }
+    try { msg = renderEmail(kind, b, configForEmail(), { link, siteUrl: site, ...extra }); }
     catch (e) { console.error("Plantilla de correo:", e.message); return false; }
     Promise.resolve(mail.send({ to: b.email, ...msg }))
       .catch((e) => console.error(`No se pudo enviar el correo (${kind}) a la cita ${b.id}:`, e.message));
@@ -69,12 +82,12 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
   function resolveServices(ids) {
     if (!Array.isArray(ids) || !ids.length || ids.length > 5 || new Set(ids).size !== ids.length)
       throw new HttpError(400, "Elige entre 1 y 5 servicios.");
-    const list = ids.map((id) => services.get(id));
-    if (list.some((s) => !s)) throw new HttpError(400, "Servicio desconocido.");
-    const category = list[0].cat;
-    if (list.some((s) => s.cat !== category))
+    const list = ids.map((id) => (typeof id === "string" ? repo.service(id) : null));
+    if (list.some((s) => !s || !s.active)) throw new HttpError(400, "Uno de los servicios ya no está disponible.");
+    const category = list[0].category;
+    if (list.some((s) => s.category !== category))
       throw new HttpError(400, "Reserva los servicios de barbería y de salón por separado.");
-    const minutes = list.reduce((t, s) => t + s.min, 0);
+    const minutes = list.reduce((t, s) => t + s.minutes, 0);
     const total = list.some((s) => s.price == null) ? null : list.reduce((t, s) => t + s.price, 0);
     return { list, category, minutes, total };
   }
@@ -114,9 +127,54 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
   }
 
   const publicBooking = (b) => ({
-    id: b.id, day: b.day, start: b.start, minutes: b.minutes, services: b.services,
-    total: b.total, status: b.status, name: b.name.split(" ")[0],
+    id: b.id, day: b.day, start: b.start, minutes: b.minutes, services: b.services, category: b.category,
+    total: b.total, status: b.status, note: b.note,
   });
+
+  /* ---------- Sesiones de clientes ---------- */
+  const COOKIE = "va_sid";
+  function secureCookie(req) {
+    if (env.COOKIE_SECURE) return env.COOKIE_SECURE === "1";
+    if (publicUrl.startsWith("https://")) return true;
+    return Boolean(env.TRUST_PROXY && String(req.headers["x-forwarded-proto"] || "").startsWith("https"));
+  }
+  function setSessionCookie(req, res, token, maxAgeSec) {
+    res.setHeader("set-cookie", `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSec}` +
+      (secureCookie(req) ? "; Secure" : ""));
+  }
+  function startSession(req, res, userId) {
+    const token = newToken();
+    repo.sessionInsert(tokenHash(token), userId, Date.now() + SESSION_DAYS * 86400e3);
+    setSessionCookie(req, res, token, SESSION_DAYS * 86400);
+    return token;
+  }
+  function currentUser(req) {
+    const token = parseCookies(req.headers.cookie)[COOKIE];
+    if (!token) return null;
+    const sess = repo.sessionGet(tokenHash(token));
+    if (!sess) return null;
+    const u = repo.userById(sess.user_id);
+    return u ? { ...u, sessionHash: tokenHash(token) } : null;
+  }
+  function requireUser(req) {
+    const u = currentUser(req);
+    if (!u) throw new HttpError(401, "Inicia sesión para continuar.");
+    return u;
+  }
+  const publicUser = (u) => ({ id: u.id, name: u.name, phone: u.phone, email: u.email, since: u.created_at });
+
+  function cleanPassword(v) {
+    const p = String(v ?? "");
+    if (p.length < 8) throw new HttpError(400, "La contraseña debe tener al menos 8 caracteres.");
+    if (p.length > 200) throw new HttpError(400, "La contraseña es demasiado larga.");
+    return p;
+  }
+  function checkUnique({ phone, email }, exceptId) {
+    const byPhone = repo.userByPhone(phone);
+    if (byPhone && byPhone.id !== exceptId) throw new HttpError(409, "Ya existe una cuenta con ese teléfono. ¿Quieres iniciar sesión?");
+    const byEmail = repo.userByEmail(email);
+    if (byEmail && byEmail.id !== exceptId) throw new HttpError(409, "Ya existe una cuenta con ese correo. ¿Quieres iniciar sesión?");
+  }
 
   function cleanPhone(raw) {
     let p = String(raw || "").replace(/\D/g, "");
@@ -170,11 +228,14 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
 
   route("GET", "/api/config", () => {
     const { name, tagline, partner, slogan, location, mapsUrl, phone, whatsapp, currency,
-      slotStepMinutes, daysAhead, policies, categories, services: svc } = config;
+      slotStepMinutes, daysAhead, policies, categories } = config;
+    const all = repo.services();
     return { name, tagline, partner, slogan, location, mapsUrl, phone, whatsapp, currency,
       slotStepMinutes, daysAhead, policies, categories: categories.map(({ id, name }) => ({ id, name })),
       status: openStatus(categories[0].id),
-      services: svc, today: now().day, nowMinutes: now().minutes, emailEnabled: mail.enabled !== false };
+      services: all.filter((x) => x.active).map(toPublicService),
+      retired: all.filter((x) => !x.active).map(({ id, name }) => ({ id, name })),
+      today: now().day, nowMinutes: now().minutes, emailEnabled: mail.enabled !== false };
   });
 
   // Resumen de varios días: cuántos espacios libres hay en cada uno.
@@ -192,17 +253,16 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
   });
 
   route("POST", "/api/bookings", ({ body, ip, req }) => {
+    const user = requireUser(req);
     if (!bookingLimit(ip)) throw new HttpError(429, "Demasiados intentos. Prueba de nuevo más tarde.");
     const { list, category, minutes, total } = resolveServices(body.services);
     parseSlot(body.day, body.start);
-    const name = cleanText(body.name, 60, "nombre", true);
-    const phone = cleanPhone(body.phone);
-    const email = cleanEmail(body.email);
+    const { name, phone, email } = user;
     const note = cleanText(body.note, 200, "nota", false);
     if (body.website) throw new HttpError(400, "Solicitud inválida."); // campo trampa para bots
 
     const booking = repo.transaction(() => {
-      if (repo.activeByPhone(phone, now().day) >= config.maxActivePerPhone)
+      if (repo.activeByUser(user.id, now().day) >= config.maxActivePerPhone)
         throw new HttpError(429, "Ya tienes varias citas activas. Escríbenos por WhatsApp si necesitas otra.");
       if (!slotsFor(category, body.day, minutes).includes(body.start))
         throw new HttpError(409, "Ese espacio acaba de ocuparse. Elige otra hora.");
@@ -212,6 +272,7 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
         token: crypto.randomBytes(18).toString("base64url"),
         category, day: body.day, start: body.start, minutes, services: list.map((s) => s.id), total,
         name, phone, email, note, status: "pendiente", source: "web", created_at: ts, updated_at: ts,
+        user_id: user.id,
       };
       repo.insertBooking(b);
       return b;
@@ -219,21 +280,18 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     emailClient("recibida", booking, req);
 
     send(`Nueva reserva: ${name}`, `${list.map((s) => s.name).join(" + ")}\n${booking.day} · ${fmtTime(booking.start)}\nTel: ${phone}${note ? "\nNota: " + note : ""}`);
-    return { status: 201, body: { ...publicBooking(booking), token: booking.token } };
+    return { status: 201, body: publicBooking(booking) };
   });
 
-  function ownBooking(id, token) {
-    const b = repo.bookingById(id);
-    const ok = b && typeof token === "string" && token.length === b.token.length &&
-      crypto.timingSafeEqual(Buffer.from(token), Buffer.from(b.token));
-    if (!ok) throw new HttpError(404, "No encontramos esa cita.");
-    return b;
-  }
+  route("GET", "/api/me/bookings", ({ req }) => {
+    const user = requireUser(req);
+    return { bookings: repo.bookingsByUser(user.id).map(publicBooking), today: now().day };
+  });
 
-  route("GET", "/api/bookings/:id", ({ params, query }) => publicBooking(ownBooking(params.id, query.get("token"))));
-
-  route("POST", "/api/bookings/:id/cancel", ({ params, body, req }) => {
-    const b = ownBooking(params.id, body.token);
+  route("POST", "/api/bookings/:id/cancel", ({ params, req }) => {
+    const user = requireUser(req);
+    const b = repo.bookingById(params.id);
+    if (!b || b.user_id !== user.id) throw new HttpError(404, "No encontramos esa cita.");
     const n = now();
     if (!ACTIVE.has(b.status)) throw new HttpError(409, "Esta cita ya no está activa.");
     if (b.day < n.day || (b.day === n.day && b.start <= n.minutes)) throw new HttpError(409, "Esta cita ya pasó.");
@@ -241,6 +299,99 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     emailClient("cancelada", b, req, { byClient: true });
     send(`Cita cancelada: ${b.name}`, `${b.day} · ${fmtTime(b.start)} quedó libre.`);
     return publicBooking({ ...b, status: "cancelada" });
+  });
+
+  /* ---------- Cuentas de clientes ---------- */
+  route("POST", "/api/auth/register", ({ body, ip, req, res }) => {
+    if (!registerLimit(ip)) throw new HttpError(429, "Demasiados registros desde esta conexión. Intenta más tarde.");
+    if (body.website) throw new HttpError(400, "Solicitud inválida.");
+    const u = {
+      name: cleanText(body.name, 60, "nombre", true),
+      phone: cleanPhone(body.phone),
+      email: cleanEmail(body.email),
+    };
+    if (!u.email) throw new HttpError(400, "Escribe tu correo electrónico.");
+    const password = cleanPassword(body.password);
+    const id = repo.transaction(() => {
+      checkUnique(u);
+      return repo.userInsert({ ...u, pass_hash: hashPassword(password) });
+    });
+    startSession(req, res, id);
+    return { status: 201, body: { user: publicUser(repo.userById(id)) } };
+  });
+
+  route("POST", "/api/auth/login", ({ body, ip, req, res }) => {
+    if (!userLoginLimit(ip)) throw new HttpError(429, "Demasiados intentos. Espera unos minutos.");
+    const raw = String(body.login || "").trim();
+    const password = String(body.password || "");
+    let key = raw.toLowerCase();
+    if (!raw.includes("@")) { try { key = cleanPhone(raw); } catch { key = ""; } }
+    const u = key ? repo.userByLogin(key) : null;
+    const ok = verifyPassword(password, u ? u.pass_hash : DUMMY) && Boolean(u);
+    if (!ok) throw new HttpError(401, "Correo, teléfono o contraseña incorrectos.");
+    repo.sessionPurge();
+    startSession(req, res, u.id);
+    return { user: publicUser(u) };
+  });
+
+  route("POST", "/api/auth/logout", ({ req, res }) => {
+    const token = parseCookies(req.headers.cookie)[COOKIE];
+    if (token) repo.sessionDelete(tokenHash(token));
+    setSessionCookie(req, res, "", 0);
+    return { ok: true };
+  });
+
+  route("GET", "/api/me", ({ req }) => {
+    const u = currentUser(req);
+    return { user: u ? publicUser(u) : null };
+  });
+
+  route("PATCH", "/api/me", ({ body, req }) => {
+    const user = requireUser(req);
+    const u = {
+      name: cleanText(body.name, 60, "nombre", true),
+      phone: cleanPhone(body.phone),
+      email: cleanEmail(body.email),
+    };
+    if (!u.email) throw new HttpError(400, "Escribe tu correo electrónico.");
+    repo.transaction(() => { checkUnique(u, user.id); repo.userUpdate(user.id, u); });
+    return { user: publicUser(repo.userById(user.id)) };
+  });
+
+  route("POST", "/api/me/password", ({ body, req }) => {
+    const user = requireUser(req);
+    if (!verifyPassword(String(body.current || ""), user.pass_hash))
+      throw new HttpError(400, "La contraseña actual no es correcta.");
+    repo.userSetPass(user.id, hashPassword(cleanPassword(body.password)));
+    repo.sessionDeleteOthers(user.id, user.sessionHash); // cierra la sesión en otros aparatos
+    return { ok: true };
+  });
+
+  // Siempre responde lo mismo, exista o no la cuenta, para no revelar qué correos están registrados.
+  route("POST", "/api/auth/forgot", ({ body, ip, req }) => {
+    if (!userLoginLimit(ip)) throw new HttpError(429, "Demasiados intentos. Espera unos minutos.");
+    const email = String(body.email || "").trim().toLowerCase();
+    const u = email ? repo.userByEmail(email) : null;
+    const site = siteUrl(req);
+    if (u && site && mail.enabled !== false) {
+      const token = newToken();
+      repo.resetPurgeUser(u.id);
+      repo.resetInsert(tokenHash(token), u.id, Date.now() + 3600e3);
+      const msg = renderReset(u, config, `${site}/?reset=${token}`);
+      Promise.resolve(mail.send({ to: u.email, ...msg }))
+        .catch((e) => console.error("No se pudo enviar el correo de contraseña:", e.message));
+    }
+    return { ok: true, emailEnabled: mail.enabled !== false };
+  });
+
+  route("POST", "/api/auth/reset", ({ body, req, res }) => {
+    const password = cleanPassword(body.password);
+    const uid = repo.resetTake(tokenHash(String(body.token || "")));
+    if (!uid) throw new HttpError(400, "El enlace venció o ya se usó. Pide uno nuevo.");
+    repo.userSetPass(uid, hashPassword(password));
+    repo.sessionDeleteOthers(uid, "");
+    startSession(req, res, uid);
+    return { user: publicUser(repo.userById(uid)) };
   });
 
   /* ---------- Panel ---------- */
@@ -322,6 +473,66 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
   route("DELETE", "/api/admin/blocks/:id", ({ params }) => {
     if (!repo.deleteBlock(Number(params.id))) throw new HttpError(404, "Bloqueo no encontrado.");
     return { ok: true };
+  }, { admin: true });
+
+  /* ---------- Servicios (panel) ---------- */
+  function cleanService(body) {
+    const category = parseCategory(body.category);
+    const name = cleanText(body.name, 60, "nombre", true);
+    const description = cleanText(body.description, 200, "descripción", false);
+    const minutes = Number(body.minutes);
+    if (!Number.isInteger(minutes) || minutes < 5 || minutes > 480 || minutes % 5)
+      throw new HttpError(400, "La duración debe ir de 5 en 5 minutos, entre 5 y 480.");
+    let price = body.price;
+    if (price === "" || price === null || price === undefined) price = null;
+    else {
+      price = Number(price);
+      if (!Number.isInteger(price) || price < 0 || price > 10_000_000) throw new HttpError(400, "Precio inválido.");
+    }
+    return { category, name, description, minutes, price, popular: Boolean(body.popular), active: body.active !== false };
+  }
+  function slugFor(name) {
+    const base = name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "servicio";
+    let id = base, i = 2;
+    while (repo.service(id)) id = `${base}-${i++}`;
+    return id;
+  }
+
+  route("GET", "/api/admin/services", () => ({ services: repo.services() }), { admin: true });
+
+  route("POST", "/api/admin/services", ({ body }) => {
+    const s = cleanService(body);
+    const all = repo.services();
+    const sort = all.length ? Math.max(...all.map((x) => x.sort)) + 10 : 0;
+    const id = slugFor(s.name);
+    repo.serviceSave({ id, ...s, sort });
+    return { status: 201, body: repo.service(id) };
+  }, { admin: true });
+
+  route("PUT", "/api/admin/services/:id", ({ params, body }) => {
+    const cur = repo.service(params.id);
+    if (!cur) throw new HttpError(404, "Servicio no encontrado.");
+    repo.serviceSave({ id: cur.id, ...cleanService(body), sort: cur.sort });
+    return repo.service(cur.id);
+  }, { admin: true });
+
+  // Solo se borran servicios sin citas. Los demás se ocultan, para no perder el historial.
+  route("DELETE", "/api/admin/services/:id", ({ params }) => {
+    const cur = repo.service(params.id);
+    if (!cur) throw new HttpError(404, "Servicio no encontrado.");
+    if (repo.serviceUsed(cur.id)) throw new HttpError(409, "Este servicio tiene citas registradas. Ocúltalo en lugar de borrarlo.");
+    repo.serviceDelete(cur.id);
+    return { ok: true };
+  }, { admin: true });
+
+  route("PUT", "/api/admin/services-order", ({ body }) => {
+    const ids = body.ids;
+    const all = repo.services();
+    if (!Array.isArray(ids) || ids.length !== all.length || new Set(ids).size !== ids.length || ids.some((id) => !repo.service(id)))
+      throw new HttpError(400, "Orden inválido.");
+    repo.transaction(() => ids.forEach((id, i) => { const s = repo.service(id); repo.serviceSave({ ...s, sort: i * 10 }); }));
+    return { services: repo.services() };
   }, { admin: true });
 
   /* ---------- Horario (panel) ---------- */
@@ -470,8 +681,12 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
       if (!r) throw new HttpError(404, "Ruta no encontrada.");
       if (r.admin && !checkToken(req)) throw new HttpError(401, "Inicia sesión de nuevo.");
       const params = r.re.exec(url.pathname).groups || {};
+      // Las escrituras deben enviar JSON: un formulario de otro sitio no puede hacerlo sin permiso (CSRF).
+      if (["POST", "PUT", "PATCH"].includes(req.method) &&
+          !String(req.headers["content-type"] || "").startsWith("application/json"))
+        throw new HttpError(415, "Formato no soportado.");
       const body = await readJson(req);
-      const out = await r.handler({ params, query: url.searchParams, body, ip, req });
+      const out = await r.handler({ params, query: url.searchParams, body, ip, req, res });
       if (out && out.status && out.body) return sendJson(res, out.status, out.body);
       sendJson(res, 200, out);
     } catch (e) {

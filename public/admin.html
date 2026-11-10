@@ -82,6 +82,15 @@
         </section>
       </div>
 
+      <!-- Servicios -->
+      <div class="view" data-view="services" hidden>
+        <div class="adm-dayhead" style="padding-top:8px">
+          <p class="adm-hint" style="margin:0;flex:1">Toca un servicio para cambiar su duración, precio o descripción.</p>
+          <button class="btn btn--gold adm-small" data-action="svc-new">+ Nuevo</button>
+        </div>
+        <div class="list" id="svc-list"></div>
+      </div>
+
       <!-- Barra de selección de días -->
       <div class="cartbar selbar" id="selbar" hidden>
         <div><strong id="sel-count"></strong><small><button class="link" data-action="sel-clear">Quitar selección</button></small></div>
@@ -92,6 +101,7 @@
         <button class="tab is-active" data-goto="pending"><span class="ico ico--list"></span>Pendientes <b class="badge" id="badge" hidden></b></button>
         <button class="tab" data-goto="agenda"><span class="ico ico--cal"></span>Agenda</button>
         <button class="tab" data-goto="schedule"><span class="ico ico--clock"></span>Horario</button>
+        <button class="tab" data-goto="services"><span class="ico ico--scissors"></span>Servicios</button>
       </nav>
     </section>
 
@@ -148,6 +158,35 @@
       <footer class="flow__foot adm-foot">
         <button class="btn btn--ghost" data-action="close-sheet">Cancelar</button>
         <button class="btn btn--gold" data-action="week-save">Guardar</button>
+      </footer>
+    </div>
+
+    <!-- EDITAR SERVICIO -->
+    <div class="flow" id="svc-editor" hidden role="dialog" aria-modal="true" aria-labelledby="se-title">
+      <header class="flow__head">
+        <span></span>
+        <strong id="se-title">Servicio</strong>
+        <button class="iconbtn" data-action="close-sheet" aria-label="Cerrar">×</button>
+      </header>
+      <form class="flow__body pane" id="svc-form" novalidate>
+        <label class="field"><span>Nombre</span><input name="name" maxlength="60" required /></label>
+        <label class="field"><span>Categoría</span><select name="category" id="se-cat"></select></label>
+        <div class="adm-row">
+          <label class="field"><span>Duración</span>
+            <select name="minutes" id="se-min"></select></label>
+          <label class="field"><span>Precio (₡)</span>
+            <input name="price" type="number" inputmode="numeric" min="0" step="500" placeholder="Consultar" /></label>
+        </div>
+        <label class="field"><span>Descripción (opcional)</span><textarea name="description" rows="2" maxlength="200"></textarea></label>
+        <label class="switch-row"><span><strong>Destacado</strong><small>Aparece en “Los más pedidos” de la portada.</small></span>
+          <input type="checkbox" class="switch" name="popular" /></label>
+        <label class="switch-row"><span><strong>Visible para clientes</strong><small>Si lo apagas, nadie lo puede reservar, pero se conserva en el historial.</small></span>
+          <input type="checkbox" class="switch" name="active" /></label>
+        <p class="adm-hint" style="margin:4px 0 0">Cambiar la duración o el precio no afecta las citas ya reservadas.</p>
+      </form>
+      <footer class="flow__foot adm-foot">
+        <button class="btn btn--ghost" data-action="svc-delete" id="se-delete">Borrar</button>
+        <button class="btn btn--gold" data-action="svc-save">Guardar</button>
       </footer>
     </div>
 

@@ -29,6 +29,14 @@ Barbero (/admin)   ◄───────────┘   + aviso push opcion
 3. En `/admin` el barbero toca **Confirmar** o **Rechazar**. Si el cliente dejó correo, el aviso le llega por ahí; si no, se abre WhatsApp con el mensaje ya escrito.
 4. En "Mis citas", el cliente ve el estado de su cita (pendiente, confirmada…) y puede cancelarla, lo que libera el espacio.
 
+### Cuentas de clientes
+
+- **Sin cuenta** se pueden ver servicios y horarios. Para **confirmar una reserva** hay que iniciar sesión o crear una cuenta en ese mismo paso.
+- **Registro:** nombre, teléfono, correo y contraseña. Se entra con correo o teléfono y contraseña.
+- **Perfil:** datos editables, cambio de contraseña, número de visitas y próxima cita.
+- **Mis citas:** próximas (con opción de cancelar y de agregar al calendario) e historial (con "Reservar de nuevo").
+- **Olvidé mi contraseña:** llega un enlace por correo que vence en 1 hora. Requiere tener los correos configurados.
+
 ### Correos al cliente
 
 Con un estilo parecido a los de Bewe, pero con la imagen negro y dorado de la marca. El correo es opcional para el cliente.
@@ -50,6 +58,9 @@ Se envían con [Resend](https://resend.com), cuyo plan gratis da 3000 correos al
 - **Pendientes:** las citas por confirmar, con un número rojo que avisa cuando entra una nueva. Se revisa cada 30 segundos.
 - **Agenda:** las citas por día. Desde aquí se marca a cada cliente como atendido, "no vino", cancelada, o se le manda un recordatorio por WhatsApp.
 - **+ Cita:** para agendar a quien llama o llega al local. Esa cita queda confirmada de una vez.
+- **Servicios:** crear, editar, ordenar, ocultar o borrar servicios: nombre, categoría, **duración**, precio (en blanco = "Consultar"), descripción y "Destacado" (aparece en la portada).
+  - Cada cita guarda la duración y el precio que tenía al reservarse, así que los cambios no afectan las citas existentes.
+  - Un servicio que ya tiene citas no se puede borrar, solo ocultar, para conservar el historial.
 - **Horario:** el barbero decide qué días y horas se trabaja, por separado para barbería y para salón.
   - **Horario semanal:** el horario normal de cada día. Cada día puede estar cerrado o tener hasta 4 turnos, por ejemplo 9:00–12:00 y 14:00–19:00 para dejar el almuerzo libre.
   - **Calendario:** se tocan uno o varios días y se **abren** con un horario, se **cierran** (vacaciones, feriados) o vuelven al horario semanal.
@@ -82,7 +93,8 @@ Las variables están explicadas en `.env.example`. Importante: haz copias de seg
 
 | Archivo | Qué es |
 |---|---|
-| `server/config.js` | **Lo que se edita:** servicios, precios, horarios, políticas y cuántas citas simultáneas se atienden |
+| `server/config.js` | Datos del negocio, políticas, capacidad, y servicios y horario **iniciales** (después se editan en el panel) |
+| `server/auth.js` | Contraseñas y sesiones |
 | `server/app.js` | La API: disponibilidad, reservas y panel |
 | `server/availability.js` | El cálculo de horas libres |
 | `server/db.js` | La base de datos SQLite |
@@ -94,8 +106,14 @@ Las variables están explicadas en `.env.example`. Importante: haz copias de seg
 ## Seguridad
 
 - El panel se protege con un PIN, con un máximo de 6 intentos cada 15 minutos. Las sesiones duran 12 horas.
-- Cada cliente ve y cancela sus citas solo con un código secreto que queda guardado en su celular.
-- Las reservas tienen límites: 8 intentos por hora por conexión, 3 citas activas por teléfono y un campo invisible que frena a los bots.
+- **Cuentas de clientes:**
+  - Las contraseñas se guardan cifradas con scrypt.
+  - La sesión va en una cookie `HttpOnly` y `SameSite=Lax`, que es `Secure` cuando se usa https.
+  - El servidor solo acepta escrituras en formato JSON, lo que bloquea formularios enviados desde otros sitios (CSRF).
+  - Cambiar la contraseña cierra la sesión en los demás aparatos.
+  - La recuperación de contraseña no revela qué correos tienen cuenta.
+- Cada cliente solo ve y cancela sus propias citas.
+- Las reservas tienen límites: 8 intentos por hora por conexión, 3 citas activas por cliente y un campo invisible que frena a los bots. También hay límites de intentos para iniciar sesión y crear cuentas.
 - El cliente nunca ve teléfonos ni datos de otras personas.
 
 ## Pendiente de confirmar con la barbería

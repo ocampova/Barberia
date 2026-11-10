@@ -44,6 +44,40 @@ function openDb(file) {
       ranges   TEXT NOT NULL,
       PRIMARY KEY (category, weekday)
     );
+    -- Clientes con cuenta.
+    CREATE TABLE IF NOT EXISTS users (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      name       TEXT NOT NULL,
+      phone      TEXT NOT NULL UNIQUE,
+      email      TEXT NOT NULL UNIQUE,
+      pass_hash  TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    -- Sesiones: se guarda solo el hash del token, nunca el token.
+    CREATE TABLE IF NOT EXISTS sessions (
+      token_hash TEXT PRIMARY KEY,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      expires_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id);
+    CREATE TABLE IF NOT EXISTS password_resets (
+      token_hash TEXT PRIMARY KEY,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      expires_at INTEGER NOT NULL
+    );
+    -- Servicios que ofrece el negocio (los administra el panel).
+    CREATE TABLE IF NOT EXISTS services (
+      id          TEXT PRIMARY KEY,
+      category    TEXT NOT NULL,
+      name        TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      price       INTEGER,
+      minutes     INTEGER NOT NULL,
+      popular     INTEGER NOT NULL DEFAULT 0,
+      active      INTEGER NOT NULL DEFAULT 1,
+      sort        INTEGER NOT NULL DEFAULT 0
+    );
     -- Excepciones por fecha: reemplazan al horario semanal ese día ([] = cerrado).
     CREATE TABLE IF NOT EXISTS schedule_days (
       category TEXT NOT NULL,
@@ -56,10 +90,14 @@ function openDb(file) {
   const cols = db.prepare("PRAGMA table_info(bookings)").all().map((c) => c.name);
   if (!cols.includes("email")) db.exec("ALTER TABLE bookings ADD COLUMN email TEXT NOT NULL DEFAULT ''");
   if (!cols.includes("reminded_at")) db.exec("ALTER TABLE bookings ADD COLUMN reminded_at TEXT");
+  if (!cols.includes("user_id")) db.exec("ALTER TABLE bookings ADD COLUMN user_id INTEGER");
+  db.exec("CREATE INDEX IF NOT EXISTS bookings_user ON bookings(user_id)");
+  db.exec("PRAGMA foreign_keys = ON");
   return db;
 }
 
 const rowToBooking = (r) => r && { ...r, services: JSON.parse(r.services) };
+const rowToService = (r) => r && { ...r, popular: Boolean(r.popular), active: Boolean(r.active) };
 
 function repo(db) {
   const q = {
@@ -70,8 +108,36 @@ function repo(db) {
       "SELECT COUNT(*) AS n FROM bookings WHERE phone = ? AND day >= ? AND status IN ('pendiente','confirmada')"),
     pendingCount: db.prepare("SELECT COUNT(*) AS n FROM bookings WHERE status = 'pendiente' AND day >= ?"),
     insertBooking: db.prepare(`INSERT INTO bookings
-      (id, token, category, day, start, minutes, services, total, name, phone, email, note, status, source, created_at, updated_at)
-      VALUES (:id, :token, :category, :day, :start, :minutes, :services, :total, :name, :phone, :email, :note, :status, :source, :created_at, :updated_at)`),
+      (id, token, category, day, start, minutes, services, total, name, phone, email, note, status, source, created_at, updated_at, user_id)
+      VALUES (:id, :token, :category, :day, :start, :minutes, :services, :total, :name, :phone, :email, :note, :status, :source, :created_at, :updated_at, :user_id)`),
+    bookingsByUser: db.prepare("SELECT * FROM bookings WHERE user_id = ? ORDER BY day DESC, start DESC LIMIT 200"),
+    activeByUser: db.prepare(
+      "SELECT COUNT(*) AS n FROM bookings WHERE user_id = ? AND day >= ? AND status IN ('pendiente','confirmada')"),
+    userInsert: db.prepare(`INSERT INTO users (name, phone, email, pass_hash, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)`),
+    userById: db.prepare("SELECT * FROM users WHERE id = ?"),
+    userByLogin: db.prepare("SELECT * FROM users WHERE email = ? OR phone = ?"),
+    userByEmail: db.prepare("SELECT * FROM users WHERE email = ?"),
+    userByPhone: db.prepare("SELECT * FROM users WHERE phone = ?"),
+    userUpdate: db.prepare("UPDATE users SET name = ?, phone = ?, email = ?, updated_at = ? WHERE id = ?"),
+    userSetPass: db.prepare("UPDATE users SET pass_hash = ?, updated_at = ? WHERE id = ?"),
+    sessionInsert: db.prepare("INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)"),
+    sessionGet: db.prepare("SELECT * FROM sessions WHERE token_hash = ? AND expires_at > ?"),
+    sessionDelete: db.prepare("DELETE FROM sessions WHERE token_hash = ?"),
+    sessionDeleteUser: db.prepare("DELETE FROM sessions WHERE user_id = ? AND token_hash <> ?"),
+    sessionPurge: db.prepare("DELETE FROM sessions WHERE expires_at <= ?"),
+    resetInsert: db.prepare("INSERT INTO password_resets (token_hash, user_id, expires_at) VALUES (?, ?, ?)"),
+    resetTake: db.prepare("DELETE FROM password_resets WHERE token_hash = ? AND expires_at > ? RETURNING user_id"),
+    resetPurgeUser: db.prepare("DELETE FROM password_resets WHERE user_id = ?"),
+    svcAll: db.prepare("SELECT * FROM services ORDER BY sort, name"),
+    svcGet: db.prepare("SELECT * FROM services WHERE id = ?"),
+    svcCount: db.prepare("SELECT COUNT(*) AS n FROM services"),
+    svcUpsert: db.prepare(`INSERT INTO services (id, category, name, description, price, minutes, popular, active, sort)
+      VALUES (:id, :category, :name, :description, :price, :minutes, :popular, :active, :sort)
+      ON CONFLICT (id) DO UPDATE SET category = excluded.category, name = excluded.name, description = excluded.description,
+        price = excluded.price, minutes = excluded.minutes, popular = excluded.popular, active = excluded.active, sort = excluded.sort`),
+    svcDelete: db.prepare("DELETE FROM services WHERE id = ?"),
+    svcUsed: db.prepare("SELECT COUNT(*) AS n FROM bookings WHERE services LIKE ?"),
     reminderCandidates: db.prepare(`SELECT * FROM bookings WHERE status = 'confirmada' AND email <> ''
       AND reminded_at IS NULL AND day BETWEEN ? AND ?`),
     setReminded: db.prepare("UPDATE bookings SET reminded_at = ? WHERE id = ?"),
@@ -96,7 +162,35 @@ function repo(db) {
     bookingById: (id) => rowToBooking(q.bookingById.get(id)),
     activeByPhone: (phone, fromDay) => q.activeByPhone.get(phone, fromDay).n,
     pendingCount: (fromDay) => q.pendingCount.get(fromDay).n,
-    insertBooking: (b) => q.insertBooking.run({ email: "", ...b, services: JSON.stringify(b.services) }),
+    insertBooking: (b) => q.insertBooking.run({ email: "", user_id: null, ...b, services: JSON.stringify(b.services) }),
+    bookingsByUser: (uid) => q.bookingsByUser.all(uid).map(rowToBooking),
+    activeByUser: (uid, fromDay) => q.activeByUser.get(uid, fromDay).n,
+
+    userInsert(u) {
+      const ts = new Date().toISOString();
+      return Number(q.userInsert.run(u.name, u.phone, u.email, u.pass_hash, ts, ts).lastInsertRowid);
+    },
+    userById: (id) => q.userById.get(id),
+    userByLogin: (v) => q.userByLogin.get(v, v),
+    userByEmail: (e) => q.userByEmail.get(e),
+    userByPhone: (p) => q.userByPhone.get(p),
+    userUpdate: (id, u) => q.userUpdate.run(u.name, u.phone, u.email, new Date().toISOString(), id),
+    userSetPass: (id, h) => q.userSetPass.run(h, new Date().toISOString(), id),
+    sessionInsert: (h, uid, exp) => q.sessionInsert.run(h, uid, exp),
+    sessionGet: (h) => q.sessionGet.get(h, Date.now()),
+    sessionDelete: (h) => q.sessionDelete.run(h),
+    sessionDeleteOthers: (uid, keepHash) => q.sessionDeleteUser.run(uid, keepHash),
+    sessionPurge: () => q.sessionPurge.run(Date.now()),
+    resetInsert: (h, uid, exp) => q.resetInsert.run(h, uid, exp),
+    resetTake: (h) => { const r = q.resetTake.get(h, Date.now()); return r ? r.user_id : null; },
+    resetPurgeUser: (uid) => q.resetPurgeUser.run(uid),
+
+    services: () => q.svcAll.all().map(rowToService),
+    service: (id) => rowToService(q.svcGet.get(id)),
+    serviceCount: () => q.svcCount.get().n,
+    serviceSave: (s) => q.svcUpsert.run({ ...s, popular: s.popular ? 1 : 0, active: s.active ? 1 : 0 }),
+    serviceDelete: (id) => q.svcDelete.run(id).changes,
+    serviceUsed: (id) => q.svcUsed.get(`%"${id}"%`).n > 0,
     reminderCandidates: (from, to) => q.reminderCandidates.all(from, to).map(rowToBooking),
     setReminded: (id) => q.setReminded.run(new Date().toISOString(), id).changes,
     setStatus: (id, status) => q.setStatus.run(status, new Date().toISOString(), id).changes,

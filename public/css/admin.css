@@ -105,3 +105,16 @@
 .we-day .switch-row { padding: 10px 0; }
 .adm-foot { gap: 10px; }
 .adm-foot .btn { flex: 1; min-width: 0; }
+
+/* ---------- Servicios ---------- */
+.ico--scissors { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'%3E%3Ccircle cx='6' cy='6' r='3'/%3E%3Ccircle cx='6' cy='18' r='3'/%3E%3Cpath d='M8.5 7.5 20 18M8.5 16.5 20 6'/%3E%3C/svg%3E"); }
+.svc-row { display: flex; align-items: stretch; gap: 6px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); }
+.svc-row.is-hidden { opacity: .55; }
+.svc-row__main { flex: 1; min-width: 0; text-align: left; padding: 14px 16px; }
+.svc-row__main strong { display: block; font-weight: 600; }
+.svc-row__main small { color: var(--muted); font-size: 13px; }
+.svc-row__move { display: grid; align-content: center; gap: 4px; padding: 6px; }
+.svc-row__move .iconbtn { width: 34px; height: 30px; border-radius: 8px; font-size: 16px; background: var(--surface-2); }
+.tag { display: inline-block; vertical-align: 2px; margin-left: 6px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 500; background: var(--surface-2); color: var(--muted); }
+.tag--gold { background: rgba(201,162,39,.15); color: var(--gold-2); }
+.field textarea { width: 100%; padding: 14px 16px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); color: var(--text); font: inherit; resize: none; }

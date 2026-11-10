@@ -19,7 +19,8 @@
   const fmtTime = (m) => `${((Math.floor(m / 60) + 11) % 12) + 1}:${String(m % 60).padStart(2, "0")} ${m < 720 ? "a.m." : "p.m."}`;
   const fmtMoney = (n) => (n == null ? "Consultar" : C.currency + n.toLocaleString("es-CR"));
   const toMin = (hhmm) => { const [h, m] = hhmm.split(":").map(Number); return h * 60 + m; };
-  const svcNames = (ids) => ids.map((id) => C.services.find((s) => s.id === id)?.name || id).join(" + ");
+  const svcNames = (ids) => ids.map((id) => C.services.find((s) => s.id === id)?.name
+    || (C.retired || []).find((s) => s.id === id)?.name || id).join(" + ");
   const STATUS = { pendiente: "pendiente", confirmada: "confirmada", rechazada: "rechazada", cancelada: "cancelada", completada: "completada", "no-asistio": "no asistió" };
 
   /* ---------- API ---------- */
@@ -147,6 +148,7 @@
       if (v === "pending") await renderPending();
       if (v === "agenda") await renderAgenda();
       if (v === "schedule") await renderSchedule();
+      if (v === "services") await renderSvcAdmin();
     } catch (e) { toast(e.message); }
     renderSelbar();
   }
@@ -207,7 +209,10 @@
       case "sel-clear": selected.clear(); return renderSchedule();
       case "edit-days": return openDayEditor();
       case "edit-week": return openWeekEditor();
-      case "close-sheet": $("#day-editor").hidden = true; $("#week-editor").hidden = true; return;
+      case "close-sheet": $("#day-editor").hidden = true; $("#week-editor").hidden = true; $("#svc-editor").hidden = true; return;
+      case "svc-new": return openSvcEditor(null);
+      case "svc-save": return saveSvc();
+      case "svc-delete": return deleteSvc();
       case "add-range": return addRangeRow(el.closest(".ranges"));
       case "del-range": el.closest(".range").remove(); return;
       case "days-save": return saveDays(false);
@@ -219,7 +224,99 @@
       return renderSchedule();
     }
     if (ds.schcat) { schCategory = ds.schcat; selected.clear(); return renderSchedule(); }
+    if (ds.svcEdit) return openSvcEditor(ds.svcEdit);
+    if (ds.svcMove) return moveSvc(ds.svcId, Number(ds.svcMove));
   });
+
+  /* ---------- Servicios ---------- */
+  let svcList = [];
+  let svcEditing = null;
+  const fmtMinutes = (m) => (m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? " " + (m % 60) + " min" : ""}` : `${m} min`);
+
+  async function reloadConfig() { C = { ...C, ...(await api("/api/config")) }; }
+
+  async function renderSvcAdmin() {
+    svcList = (await api("/api/admin/services")).services;
+    const el = $("#svc-list");
+    el.innerHTML = C.categories.map((c) => {
+      const items = svcList.filter((s) => s.category === c.id);
+      return `<p class="group">${esc(c.name)} · ${items.filter((s) => s.active).length} visibles</p>` + (items.length
+        ? items.map((s) => `<div class="svc-row ${s.active ? "" : "is-hidden"}">
+            <button class="svc-row__main" data-svc-edit="${esc(s.id)}">
+              <strong>${esc(s.name)}${s.popular ? ' <span class="tag tag--gold">Destacado</span>' : ""}${s.active ? "" : ' <span class="tag">Oculto</span>'}</strong>
+              <small>${fmtMinutes(s.minutes)} · ${fmtMoney(s.price)}</small>
+            </button>
+            <div class="svc-row__move">
+              <button class="iconbtn" data-svc-move="-1" data-svc-id="${esc(s.id)}" aria-label="Subir">↑</button>
+              <button class="iconbtn" data-svc-move="1" data-svc-id="${esc(s.id)}" aria-label="Bajar">↓</button>
+            </div>
+          </div>`).join("")
+        : `<p class="adm-hint" style="margin:0">Sin servicios en esta categoría.</p>`);
+    }).join("");
+  }
+
+  function openSvcEditor(id) {
+    svcEditing = id ? svcList.find((s) => s.id === id) : null;
+    const s = svcEditing || { name: "", category: C.categories[0].id, minutes: 45, price: null, description: "", popular: false, active: true };
+    const f = $("#svc-form");
+    $("#se-title").textContent = svcEditing ? "Editar servicio" : "Nuevo servicio";
+    $("#se-cat").innerHTML = C.categories.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
+    const mins = new Set([...Array.from({ length: 48 }, (_, i) => (i + 1) * 5).filter((m) => m <= 120 || m % 15 === 0), ...Array.from({ length: 12 }, (_, i) => 135 + i * 15), s.minutes]);
+    $("#se-min").innerHTML = [...mins].sort((a, b) => a - b).map((m) => `<option value="${m}">${fmtMinutes(m)}</option>`).join("");
+    f.name.value = s.name; f.category.value = s.category; f.minutes.value = String(s.minutes);
+    f.price.value = s.price ?? ""; f.description.value = s.description || "";
+    f.popular.checked = s.popular; f.active.checked = s.active;
+    $("#se-delete").hidden = !svcEditing;
+    $("#svc-editor").hidden = false;
+    setTimeout(() => !svcEditing && f.name.focus(), 50);
+  }
+
+  async function saveSvc() {
+    const f = $("#svc-form");
+    const body = { name: f.name.value, category: f.category.value, minutes: Number(f.minutes.value),
+      price: f.price.value === "" ? null : Number(f.price.value), description: f.description.value,
+      popular: f.popular.checked, active: f.active.checked };
+    try {
+      if (svcEditing) await api(`/api/admin/services/${encodeURIComponent(svcEditing.id)}`, { method: "PUT", body });
+      else await api("/api/admin/services", { method: "POST", body });
+      $("#svc-editor").hidden = true;
+      toast(svcEditing ? "Servicio actualizado" : "Servicio creado");
+      await reloadConfig();
+      renderSvcAdmin();
+    } catch (err) { toast(err.message); }
+  }
+
+  async function deleteSvc() {
+    if (!svcEditing || !confirm(`¿Borrar “${svcEditing.name}”? Esta acción no se puede deshacer.`)) return;
+    try {
+      await api(`/api/admin/services/${encodeURIComponent(svcEditing.id)}`, { method: "DELETE" });
+      $("#svc-editor").hidden = true;
+      toast("Servicio borrado");
+      await reloadConfig();
+      renderSvcAdmin();
+    } catch (err) {
+      // Tiene citas: ofrecer ocultarlo
+      if (confirm(err.message + "\n\n¿Ocultarlo ahora?")) {
+        $("#svc-form").active.checked = false;
+        saveSvc();
+      }
+    }
+  }
+
+  async function moveSvc(id, dir) {
+    const i = svcList.findIndex((s) => s.id === id);
+    // Solo se mueve dentro de su categoría
+    let j = i + dir;
+    while (j >= 0 && j < svcList.length && svcList[j].category !== svcList[i].category) j += dir;
+    if (j < 0 || j >= svcList.length) return;
+    const ids = svcList.map((s) => s.id);
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    try {
+      await api("/api/admin/services-order", { method: "PUT", body: { ids } });
+      await reloadConfig();
+      renderSvcAdmin();
+    } catch (err) { toast(err.message); }
+  }
 
   /* ---------- Horario ---------- */
   let schCategory = null;

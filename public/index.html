@@ -79,11 +79,18 @@
       <div class="list" id="appt-list"></div>
     </section>
 
+    <!-- PERFIL -->
+    <section class="view" id="view-profile" data-view="profile" hidden>
+      <header class="topbar"><h1>Perfil</h1></header>
+      <div id="profile"></div>
+    </section>
+
     <!-- BARRA INFERIOR -->
     <nav class="tabbar" aria-label="Navegación">
       <button class="tab is-active" data-goto="home"><span class="ico ico--home"></span>Inicio</button>
       <button class="tab" data-goto="services"><span class="ico ico--list"></span>Servicios</button>
       <button class="tab" data-goto="appointments"><span class="ico ico--cal"></span>Mis citas</button>
+      <button class="tab" data-goto="profile"><span class="ico ico--user"></span>Perfil</button>
     </nav>
 
     <!-- CARRITO FLOTANTE -->
@@ -122,21 +129,9 @@
         </div>
         <!-- Paso 3 -->
         <div class="pane" data-pane="3" hidden>
-          <h2 class="pane__title">Tus datos</h2>
-          <p class="pane__sub">Sin cuentas ni contraseñas. Solo para confirmarte tu cita.</p>
+          <h2 class="pane__title">Confirma tu cita</h2>
+          <div id="who"></div>
           <form id="details" novalidate>
-            <label class="field">
-              <span>Nombre</span>
-              <input name="name" autocomplete="name" maxlength="60" required placeholder="¿Cómo te llamas?" />
-            </label>
-            <label class="field">
-              <span>Teléfono</span>
-              <input name="phone" type="tel" inputmode="numeric" autocomplete="tel" required placeholder="8888 8888" />
-            </label>
-            <label class="field">
-              <span>Correo (opcional)</span>
-              <input name="email" type="email" inputmode="email" autocomplete="email" maxlength="120" placeholder="Para enviarte la confirmación" />
-            </label>
             <label class="field">
               <span>Nota (opcional)</span>
               <textarea name="note" rows="2" maxlength="200" placeholder="Ej: degradado bajo, mantener largo arriba"></textarea>
@@ -162,6 +157,59 @@
         </div>
         <button class="btn btn--gold" id="flow-next" data-action="flow-next">Continuar</button>
       </footer>
+    </div>
+
+    <!-- INICIAR SESIÓN / REGISTRO -->
+    <div class="flow sheet" id="auth" hidden role="dialog" aria-modal="true" aria-labelledby="auth-title">
+      <header class="flow__head">
+        <span></span>
+        <img class="auth__logo" src="img/victor-aguilar.svg" width="56" height="56" alt="" />
+        <button class="iconbtn" data-action="auth-close" aria-label="Cerrar">×</button>
+      </header>
+      <div class="flow__body pane">
+        <h2 class="pane__title" id="auth-title"></h2>
+        <p class="pane__sub" id="auth-sub"></p>
+        <div class="seg auth__seg" id="auth-seg" role="tablist">
+          <button type="button" data-auth="login" role="tab">Iniciar sesión</button>
+          <button type="button" data-auth="register" role="tab">Crear cuenta</button>
+        </div>
+
+        <form id="form-login" class="auth__form" novalidate>
+          <label class="field"><span>Correo o teléfono</span>
+            <input name="login" autocomplete="username" required placeholder="tu@correo.com o 8888 8888" /></label>
+          <label class="field"><span>Contraseña</span>
+            <input name="password" type="password" autocomplete="current-password" required /></label>
+          <button class="btn btn--gold btn--block">Entrar</button>
+          <button type="button" class="link auth__forgot" data-auth="forgot">¿Olvidaste tu contraseña?</button>
+        </form>
+
+        <form id="form-register" class="auth__form" novalidate hidden>
+          <label class="field"><span>Nombre y apellido</span>
+            <input name="name" autocomplete="name" maxlength="60" required /></label>
+          <label class="field"><span>Teléfono</span>
+            <input name="phone" type="tel" inputmode="numeric" autocomplete="tel" required placeholder="8888 8888" /></label>
+          <label class="field"><span>Correo</span>
+            <input name="email" type="email" inputmode="email" autocomplete="email" maxlength="120" required /></label>
+          <label class="field"><span>Contraseña (mínimo 8 caracteres)</span>
+            <input name="password" type="password" autocomplete="new-password" minlength="8" required /></label>
+          <input name="website" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true" />
+          <button class="btn btn--gold btn--block">Crear cuenta</button>
+          <p class="auth__fine">Usamos tus datos solo para gestionar tus citas.</p>
+        </form>
+
+        <form id="form-forgot" class="auth__form" novalidate hidden>
+          <label class="field"><span>Correo de tu cuenta</span>
+            <input name="email" type="email" autocomplete="email" required /></label>
+          <button class="btn btn--gold btn--block">Enviar enlace</button>
+          <button type="button" class="link auth__forgot" data-auth="login">Volver a iniciar sesión</button>
+        </form>
+
+        <form id="form-reset" class="auth__form" novalidate hidden>
+          <label class="field"><span>Contraseña nueva (mínimo 8 caracteres)</span>
+            <input name="password" type="password" autocomplete="new-password" minlength="8" required /></label>
+          <button class="btn btn--gold btn--block">Guardar contraseña</button>
+        </form>
+      </div>
     </div>
 
     <div class="boot-error" id="boot-error" hidden>

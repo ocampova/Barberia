@@ -162,4 +162,24 @@ function ics(b, config, svcNames) {
   ].join("\r\n");
 }
 
-module.exports = { render, ics };
+// Correo para restablecer la contraseña.
+function renderReset(user, config, link) {
+  const gold = "#c9a227", text = "#f3eee6", muted = "#a39a8e";
+  const first = esc(user.name.split(" ")[0]);
+  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
+<body style="margin:0;background:#0b0a09;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0b0a09;"><tr><td align="center" style="padding:28px 14px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;font-family:Helvetica,Arial,sans-serif;color:${text};">
+<tr><td style="background:#151311;border:1px solid ${gold};border-radius:18px;padding:30px 24px;text-align:center;">
+  <h1 style="margin:0 0 10px;font-size:22px;">Hola ${first}</h1>
+  <p style="margin:0 0 22px;font-size:15px;line-height:1.5;color:${muted};">Recibimos una solicitud para cambiar la contraseña de tu cuenta en ${esc(config.name)} Barbería. El enlace vence en 1 hora.</p>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="border-radius:999px;background:${gold};">
+    <a href="${esc(link)}" style="display:block;padding:15px 20px;color:#1a1405;font-weight:bold;font-size:15px;text-decoration:none;">Crear contraseña nueva</a>
+  </td></tr></table>
+  <p style="margin:18px 0 0;font-size:13px;color:${muted};">Si no lo pediste, ignora este correo: tu contraseña no cambia.</p>
+</td></tr></table></td></tr></table></body></html>`;
+  const textBody = `Hola ${user.name.split(" ")[0]},\n\nPara crear una contraseña nueva abre este enlace (vence en 1 hora):\n${link}\n\nSi no lo pediste, ignora este correo.`;
+  return { subject: `Cambia tu contraseña · ${config.name} Barbería`, html, text: textBody };
+}
+
+module.exports = { render, renderReset, ics };

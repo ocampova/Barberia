@@ -1,14 +1,14 @@
 (() => {
   "use strict";
 
-  const STORE_KEY = "va-barberia-citas"; // [{id, token}] de las citas hechas en este celular
-
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
-  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-  let B, SERVICES, CATEGORIES;
+  let B, SERVICES, CATEGORIES, RETIRED = [];
+  let USER = null; // cliente con sesión iniciada, o null
   const byId = (id) => SERVICES.find((s) => s.id === id);
+  const svcName = (id) => byId(id)?.name || RETIRED.find((s) => s.id === id)?.name || "Servicio";
 
   const DOW = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
   const fmtMoney = (n) => (n == null ? "Consultar" : B.currency + n.toLocaleString("es-CR"));
@@ -20,30 +20,34 @@
   const asDate = (day) => new Date(day + "T12:00:00");
   const weekday = (day) => asDate(day).getDay();
   const longDate = (day) => asDate(day).toLocaleDateString("es-CR", { weekday: "long", day: "numeric", month: "long" });
+  const localPhone = (p) => (p && p.startsWith("506") && p.length === 11 ? p.slice(3).replace(/(\d{4})(\d{4})/, "$1 $2") : "+" + p);
   const STATUS_LABEL = {
     pendiente: "Pendiente de confirmación", confirmada: "Confirmada", rechazada: "No disponible",
-    cancelada: "Cancelada", completada: "Completada", "no-asistio": "No asistió",
+    cancelada: "Cancelada", completada: "Atendida", "no-asistio": "No asististe",
   };
 
   /* ---------------- API ---------------- */
   async function api(path, opts = {}) {
     const res = await fetch(path, {
       ...opts,
+      credentials: "same-origin",
       headers: { "content-type": "application/json", ...(opts.headers || {}) },
       body: opts.body ? JSON.stringify(opts.body) : undefined,
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) { const e = new Error(data.error || "No pudimos conectar. Revisa tu internet."); e.status = res.status; throw e; }
+    if (!res.ok) {
+      const e = new Error(data.error || "No pudimos conectar. Revisa tu internet.");
+      e.status = res.status;
+      if (res.status === 401 && USER && !path.startsWith("/api/auth/")) { USER = null; renderTabs(); }
+      throw e;
+    }
     return data;
   }
 
   /* ---------------- Estado ---------------- */
-  const state = { cart: [], category: "barberia", query: "", step: 1, day: null, slot: null, avail: null, availKey: "" };
+  const state = { cart: [], category: "barberia", query: "", step: 1, day: null, slot: null, avail: null, availKey: "", view: "home" };
 
-  const loadMine = () => { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || []; } catch { return []; } };
-  const saveMine = (a) => { try { localStorage.setItem(STORE_KEY, JSON.stringify(a)); } catch {} };
-
-  const cartItems = () => state.cart.map(byId);
+  const cartItems = () => state.cart.map(byId).filter(Boolean);
   const cartMinutes = () => cartItems().reduce((t, s) => t + s.min, 0);
   const cartTotal = () => {
     const items = cartItems();
@@ -81,16 +85,19 @@
       : `Cerrado · abre el ${DOW[weekday(s.opensDay)].toLowerCase()} ${asDate(s.opensDay).getDate()}`;
     st.classList.toggle("is-open", !!s.open);
 
-    $("#popular").innerHTML = SERVICES.filter((s) => s.popular).map(cardHTML).join("");
+    const popular = SERVICES.filter((x) => x.popular);
+    $("#popular").innerHTML = (popular.length ? popular : SERVICES.slice(0, 3)).map(cardHTML).join("");
     $("#wa-link").href = `https://wa.me/${B.whatsapp}`;
     $("#phone-label").textContent = B.phone.replace(/(\d{4})(\d{4})/, "$1 $2");
 
+    const quick = SERVICES.find((x) => x.cat === "barberia") || SERVICES[0];
+    if (!quick) { $("#today-slots").innerHTML = ""; return; }
     try {
-      const { days } = await api("/api/availability?services=corte&days=1");
+      const { days } = await api(`/api/availability?services=${encodeURIComponent(quick.id)}&days=1`);
       const slots = days[0].slots;
       $("#today-count").textContent = slots.length ? `${slots.length} disponibles` : "Sin espacios";
       $("#today-slots").innerHTML = slots.length
-        ? slots.slice(0, 12).map((m) => `<button class="slot" data-quick="${m}">${fmtTime(m)}</button>`).join("")
+        ? slots.slice(0, 12).map((m) => `<button class="slot" data-quick="${m}" data-svc="${esc(quick.id)}">${fmtTime(m)}</button>`).join("")
         : `<p class="empty">Hoy ya no hay espacios. Reserva para otro día.</p>`;
     } catch (e) {
       $("#today-count").textContent = "";
@@ -99,7 +106,7 @@
   }
 
   const cardHTML = (s) => `
-    <button class="card" data-book="${s.id}">
+    <button class="card" data-book="${esc(s.id)}">
       <div class="card__body">
         <p class="card__title">${esc(s.name)}</p>
         <p class="card__meta">${fmtMin(s.min)}</p>
@@ -111,11 +118,11 @@
     const on = state.cart.includes(s.id);
     return `
     <div class="svc ${on ? "is-selected" : ""}">
-      <button class="card" data-toggle="${s.id}" aria-pressed="${on}">
+      <button class="card" data-toggle="${esc(s.id)}" aria-pressed="${on}">
         <div class="card__body">
           <p class="card__title">${esc(s.name)}</p>
           <p class="card__meta">${fmtMin(s.min)} · <span class="card__price">${fmtMoney(s.price)}</span></p>
-          <p class="svc__desc">${esc(s.desc)}</p>
+          ${s.desc ? `<p class="svc__desc">${esc(s.desc)}</p>` : ""}
         </div>
       </button>
       <span class="svc__add" aria-hidden="true">${on ? "✓" : "+"}</span>
@@ -131,69 +138,215 @@
     const list = SERVICES.filter((s) => (q ? s.name.toLowerCase().includes(q) : s.cat === state.category));
     $("#service-list").innerHTML = list.length
       ? list.map(svcHTML).join("")
-      : `<p class="empty-state">No encontramos “${esc(state.query)}”.</p>`;
+      : `<p class="empty-state">${q ? `No encontramos “${esc(state.query)}”.` : "Pronto tendremos servicios aquí."}</p>`;
   }
 
   function renderCartbar() {
     const n = state.cart.length;
-    const onServices = !$("#view-services").hidden;
-    $("#cartbar").hidden = !(n && onServices) || !$("#flow").hidden;
+    $("#cartbar").hidden = !(n && state.view === "services") || !$("#flow").hidden;
     if (!n) return;
     $("#cart-count").textContent = n === 1 ? "1 servicio" : `${n} servicios`;
     $("#cart-total").textContent = `${fmtMoney(cartTotal())} · ${fmtMin(cartMinutes())}`;
   }
 
   /* ---------------- Mis citas ---------------- */
+  const loginPrompt = (text) => `<div class="empty-state">
+      <p>${text}</p>
+      <div class="auth-cta">
+        <button class="btn btn--gold" data-auth-open="login">Iniciar sesión</button>
+        <button class="btn btn--ghost" data-auth-open="register">Crear cuenta</button>
+      </div></div>`;
+
   async function renderAppointments() {
     const el = $("#appt-list");
-    const mine = loadMine();
-    if (!mine.length) {
+    if (!USER) { el.innerHTML = loginPrompt("Inicia sesión para ver tus citas y tu historial."); return; }
+    el.innerHTML = `<p class="empty-state">Cargando…</p>`;
+    let data;
+    try { data = await api("/api/me/bookings"); }
+    catch (e) { el.innerHTML = e.status === 401 ? loginPrompt("Tu sesión terminó. Inicia sesión de nuevo.") : `<p class="empty-state">${esc(e.message)}</p>`; return; }
+    const today = data.today;
+    const isActive = (a) => ["pendiente", "confirmada"].includes(a.status) && a.day >= today;
+    const upcoming = data.bookings.filter(isActive).sort((a, b) => (a.day + a.start).localeCompare(b.day + b.start));
+    const history = data.bookings.filter((a) => !isActive(a));
+    if (!upcoming.length && !history.length) {
       el.innerHTML = `<div class="empty-state"><p>Todavía no tienes citas.</p>
         <button class="btn btn--gold" data-action="start-booking">Reservar ahora</button></div>`;
       return;
     }
-    el.innerHTML = `<p class="empty-state">Cargando…</p>`;
-    const results = await Promise.all(mine.map((m) =>
-      api(`/api/bookings/${encodeURIComponent(m.id)}?token=${encodeURIComponent(m.token)}`)
-        .then((b) => ({ ...b, token: m.token }))
-        .catch((e) => (e.status === 404 ? { gone: m.id } : null))));
-    // Olvida las citas que el servidor ya no reconoce.
-    const gone = results.filter((r) => r && r.gone).map((r) => r.gone);
-    if (gone.length) saveMine(mine.filter((m) => !gone.includes(m.id)));
-    const appts = results.filter((r) => r && !r.gone).sort((a, b) => (b.day + b.start).localeCompare(a.day + a.start));
-    if (!appts.length) {
-      el.innerHTML = results.includes(null)
-        ? `<p class="empty-state">No pudimos cargar tus citas. Revisa tu internet.</p>`
-        : `<div class="empty-state"><p>Todavía no tienes citas.</p><button class="btn btn--gold" data-action="start-booking">Reservar ahora</button></div>`;
-      return;
-    }
-    const today = B.today;
-    const upcoming = appts.filter((a) => a.day >= today && ["pendiente", "confirmada"].includes(a.status)).reverse();
-    const rest = appts.filter((a) => !upcoming.includes(a));
-    el.innerHTML = [...upcoming, ...rest].map((a) => {
-      const active = upcoming.includes(a);
+    const item = (a, active) => {
       const d = asDate(a.day);
+      const again = a.services.every((id) => byId(id));
       return `<article class="appt ${active ? "" : "is-past"}">
         <div class="appt__top">
-          <span class="appt__when">${DOW[d.getDay()]} ${d.getDate()} · ${fmtTime(a.start)}</span>
+          <span class="appt__when">${DOW[d.getDay()]} ${d.getDate()} ${d.toLocaleDateString("es-CR", { month: "short" })} · ${fmtTime(a.start)}</span>
           <span class="appt__tag appt__tag--${a.status}">${STATUS_LABEL[a.status] || a.status}</span>
         </div>
-        <p class="appt__svc">${a.services.map((id) => esc(byId(id)?.name || id)).join(" + ")} · ${fmtMoney(a.total)}</p>
-        ${active ? `<div class="appt__actions">
-          <a class="btn btn--ghost" href="${calendarLink(a)}" target="_blank" rel="noopener">Agregar al calendario</a>
-          <button class="btn btn--ghost" data-cancel="${esc(a.id)}">Cancelar</button>
-        </div>` : ""}
+        <p class="appt__svc">${a.services.map((id) => esc(svcName(id))).join(" + ")} · ${fmtMoney(a.total)}</p>
+        ${a.note ? `<p class="appt__note">“${esc(a.note)}”</p>` : ""}
+        <div class="appt__actions">
+          ${active ? `<a class="btn btn--ghost" href="${calendarLink(a)}" target="_blank" rel="noopener">Agregar al calendario</a>
+                      <button class="btn btn--ghost" data-cancel="${esc(a.id)}">Cancelar</button>`
+                   : again ? `<button class="btn btn--ghost" data-again="${esc(a.services.join(","))}">Reservar de nuevo</button>` : ""}
+        </div>
       </article>`;
-    }).join("");
+    };
+    el.innerHTML =
+      (upcoming.length ? `<p class="group">Próximas</p>` + upcoming.map((a) => item(a, true)).join("")
+        : `<div class="appt appt--cta"><p>No tienes citas próximas.</p><button class="btn btn--gold" data-action="start-booking">Reservar</button></div>`) +
+      (history.length ? `<p class="group">Historial</p>` + history.map((a) => item(a, false)).join("") : "");
+  }
+
+  /* ---------------- Perfil ---------------- */
+  async function renderProfile() {
+    const el = $("#profile");
+    if (!USER) { el.innerHTML = loginPrompt("Crea tu cuenta para reservar más rápido y ver tu historial."); return; }
+    const initials = USER.name.split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+    const since = new Date(USER.since).toLocaleDateString("es-CR", { month: "long", year: "numeric" });
+    let stats = { done: 0, next: null };
+    try {
+      const { bookings, today } = await api("/api/me/bookings");
+      stats.done = bookings.filter((b) => b.status === "completada").length;
+      stats.next = bookings.filter((b) => ["pendiente", "confirmada"].includes(b.status) && b.day >= today)
+        .sort((a, b) => (a.day + a.start).localeCompare(b.day + b.start))[0] || null;
+    } catch {}
+    el.innerHTML = `
+      <div class="profile">
+        <div class="profile__head">
+          <div class="avatar" aria-hidden="true">${esc(initials)}</div>
+          <div><p class="profile__name">${esc(USER.name)}</p><p class="profile__since">Cliente desde ${since}</p></div>
+        </div>
+        <div class="stats">
+          <div><strong>${stats.done}</strong><small>Visitas</small></div>
+          <div><strong>${stats.next ? `${DOW[weekday(stats.next.day)]} ${asDate(stats.next.day).getDate()}` : "—"}</strong><small>Próxima cita</small></div>
+        </div>
+
+        <form id="form-profile" class="card-form" novalidate>
+          <h2>Mis datos</h2>
+          <label class="field"><span>Nombre y apellido</span><input name="name" maxlength="60" autocomplete="name" value="${esc(USER.name)}" /></label>
+          <label class="field"><span>Teléfono</span><input name="phone" type="tel" inputmode="numeric" autocomplete="tel" value="${esc(localPhone(USER.phone))}" /></label>
+          <label class="field"><span>Correo</span><input name="email" type="email" autocomplete="email" maxlength="120" value="${esc(USER.email)}" /></label>
+          <button class="btn btn--gold btn--block">Guardar cambios</button>
+        </form>
+
+        <form id="form-password" class="card-form" novalidate>
+          <h2>Contraseña</h2>
+          <label class="field"><span>Contraseña actual</span><input name="current" type="password" autocomplete="current-password" /></label>
+          <label class="field"><span>Contraseña nueva (mínimo 8)</span><input name="password" type="password" autocomplete="new-password" minlength="8" /></label>
+          <button class="btn btn--ghost btn--block">Cambiar contraseña</button>
+        </form>
+
+        <button class="btn btn--ghost btn--block logout" data-action="logout">Cerrar sesión</button>
+      </div>`;
+
+    $("#form-profile").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      try {
+        const r = await api("/api/me", { method: "PATCH", body: { name: f.name.value, phone: f.phone.value, email: f.email.value } });
+        USER = r.user; toast("Datos guardados"); renderProfile();
+      } catch (err) { toast(err.message); }
+    });
+    $("#form-password").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      try {
+        await api("/api/me/password", { method: "POST", body: { current: f.current.value, password: f.password.value } });
+        f.reset(); toast("Contraseña actualizada");
+      } catch (err) { toast(err.message); }
+    });
+  }
+
+  /* ---------------- Sesión ---------------- */
+  let afterAuth = null; // qué hacer al terminar de iniciar sesión
+  const AUTH_TEXT = {
+    login: ["Bienvenido de nuevo", "Inicia sesión para reservar y ver tus citas."],
+    register: ["Crea tu cuenta", "Solo toma un minuto. Así reservas más rápido y ves tu historial."],
+    forgot: ["¿Olvidaste tu contraseña?", "Te enviamos un enlace a tu correo para crear una nueva."],
+    reset: ["Crea una contraseña nueva", "Escríbela y entrarás de una vez."],
+  };
+  let resetToken = null;
+
+  function openAuth(mode = "login", then = null) {
+    afterAuth = then;
+    setAuthMode(mode);
+    $("#auth").hidden = false;
+    document.body.style.overflow = "hidden";
+    setTimeout(() => $(`#form-${mode} input`)?.focus(), 50);
+  }
+  function setAuthMode(mode) {
+    const [title, sub] = AUTH_TEXT[mode];
+    $("#auth-title").textContent = title;
+    $("#auth-sub").textContent = sub;
+    $("#auth-seg").hidden = !["login", "register"].includes(mode);
+    $$("#auth-seg button").forEach((b) => b.classList.toggle("is-active", b.dataset.auth === mode));
+    for (const m of ["login", "register", "forgot", "reset"]) $(`#form-${m}`).hidden = m !== mode;
+  }
+  function closeAuth() {
+    $("#auth").hidden = true;
+    if ($("#flow").hidden) document.body.style.overflow = "";
+  }
+  function signedIn(user, message) {
+    USER = user;
+    closeAuth();
+    renderTabs();
+    toast(message);
+    const then = afterAuth; afterAuth = null;
+    if (then) then();
+    else if (["appointments", "profile"].includes(state.view)) go(state.view);
+  }
+
+  async function submitAuth(e, path, body, message) {
+    e.preventDefault();
+    const btn = e.target.querySelector("button:not([type=button])");
+    btn.disabled = true;
+    try {
+      const r = await api(path, { method: "POST", body });
+      e.target.reset();
+      signedIn(r.user, message(r.user));
+    } catch (err) { toast(err.message); }
+    finally { btn.disabled = false; }
+  }
+  $("#form-login").addEventListener("submit", (e) => submitAuth(e, "/api/auth/login",
+    { login: e.target.login.value, password: e.target.password.value }, (u) => `¡Hola, ${u.name.split(" ")[0]}!`));
+  $("#form-register").addEventListener("submit", (e) => {
+    const f = e.target;
+    if (f.password.value.length < 8) { e.preventDefault(); return toast("La contraseña debe tener al menos 8 caracteres"); }
+    submitAuth(e, "/api/auth/register", { name: f.name.value, phone: f.phone.value, email: f.email.value,
+      password: f.password.value, website: f.website.value }, (u) => `¡Bienvenido, ${u.name.split(" ")[0]}!`);
+  });
+  $("#form-reset").addEventListener("submit", (e) => submitAuth(e, "/api/auth/reset",
+    { token: resetToken, password: e.target.password.value }, () => "Contraseña actualizada"));
+  $("#form-forgot").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      const r = await api("/api/auth/forgot", { method: "POST", body: { email: e.target.email.value } });
+      if (!r.emailEnabled) toast("Escríbenos por WhatsApp para recuperar tu cuenta");
+      else { toast("Si el correo está registrado, te llegará un enlace"); setAuthMode("login"); }
+    } catch (err) { toast(err.message); }
+  });
+
+  async function logout() {
+    try { await api("/api/auth/logout", { method: "POST" }); } catch {}
+    USER = null;
+    renderTabs();
+    toast("Sesión cerrada");
+    go("home");
+  }
+
+  function renderTabs() {
+    const tab = $(".tab[data-goto=profile]");
+    tab.lastChild.textContent = USER ? USER.name.split(" ")[0] : "Perfil";
   }
 
   /* ---------------- Navegación ---------------- */
   function go(view) {
+    state.view = view;
     $$(".view").forEach((v) => (v.hidden = v.dataset.view !== view));
     $$(".tab").forEach((t) => t.classList.toggle("is-active", t.dataset.goto === view));
     if (view === "home") renderHome();
     if (view === "services") renderServices();
     if (view === "appointments") renderAppointments();
+    if (view === "profile") renderProfile();
     renderCartbar();
     window.scrollTo(0, 0);
   }
@@ -213,7 +366,7 @@
 
   async function renderFlow() {
     const step = state.step;
-    $$(".pane").forEach((p) => (p.hidden = p.dataset.pane !== String(step)));
+    $$(".pane[data-pane]").forEach((p) => (p.hidden = p.dataset.pane !== String(step)));
     $$(".step").forEach((s) => s.classList.toggle("is-done", step === "done" || +s.dataset.step <= step));
     $("#flow-foot").hidden = step === "done";
     $("[data-action=flow-back]").style.visibility = step === 1 || step === "done" ? "hidden" : "visible";
@@ -223,8 +376,10 @@
     const next = $("#flow-next");
 
     if (step === 1) {
-      $("#flow-services").innerHTML = CATEGORIES.map((c) =>
-        `<p class="group">${esc(c.name)}</p>` + SERVICES.filter((s) => s.cat === c.id).map(svcHTML).join("")).join("");
+      $("#flow-services").innerHTML = CATEGORIES.map((c) => {
+        const items = SERVICES.filter((s) => s.cat === c.id);
+        return items.length ? `<p class="group">${esc(c.name)}</p>` + items.map(svcHTML).join("") : "";
+      }).join("");
       next.textContent = "Elegir día y hora";
       next.disabled = !state.cart.length;
     }
@@ -264,54 +419,51 @@
     }
 
     if (step === 3) {
+      $("#who").innerHTML = USER
+        ? `<div class="who"><div class="avatar avatar--sm" aria-hidden="true">${esc(USER.name[0].toUpperCase())}</div>
+             <div><strong>${esc(USER.name)}</strong><small>${esc(localPhone(USER.phone))} · ${esc(USER.email)}</small></div></div>`
+        : `<div class="who who--guest"><p>Para confirmar necesitas una cuenta. Así podrás ver y cancelar tus citas cuando quieras.</p>
+             <div class="auth-cta">
+               <button class="btn btn--gold" data-auth-open="login" data-then="confirm">Iniciar sesión</button>
+               <button class="btn btn--ghost" data-auth-open="register" data-then="confirm">Crear cuenta</button>
+             </div></div>`;
       $("#summary").innerHTML = `
         <p class="summary__when">${longDate(state.day)} · ${fmtTime(state.slot)}</p>
         ${cartItems().map((s) => `<div class="summary__row"><span>${esc(s.name)}</span><span>${fmtMoney(s.price)}</span></div>`).join("")}
         <div class="summary__row"><span>Termina aprox.</span><span>${fmtTime(state.slot + cartMinutes())}</span></div>`;
       $("#policy-list").innerHTML = B.policies.map((p) => `<li>${esc(p)}</li>`).join("");
-      next.textContent = "Confirmar reserva";
+      next.textContent = USER ? "Confirmar reserva" : "Inicia sesión para confirmar";
       next.disabled = false;
     }
   }
 
   let submitting = false;
   async function submitBooking() {
+    if (!USER) return openAuth("login", () => renderFlow());
     if (submitting) return;
     const form = $("#details");
-    const name = form.name.value.trim();
-    const phone = form.phone.value.replace(/\D/g, "");
-    const email = form.email.value.trim();
-    const emailOk = !email || /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
-    form.name.parentElement.classList.toggle("is-invalid", name.length < 2);
-    form.phone.parentElement.classList.toggle("is-invalid", phone.length < 8);
-    form.email.parentElement.classList.toggle("is-invalid", !emailOk);
-    if (name.length < 2 || phone.length < 8) { toast("Revisa tu nombre y teléfono"); return; }
-    if (!emailOk) { toast("Revisa tu correo"); return; }
-
     submitting = true;
     const next = $("#flow-next");
     next.disabled = true; next.textContent = "Reservando…";
     try {
       const b = await api("/api/bookings", {
         method: "POST",
-        body: { services: state.cart, day: state.day, start: state.slot, name, phone, email,
-          note: form.note.value.trim(), website: form.website.value },
+        body: { services: state.cart, day: state.day, start: state.slot, note: form.note.value.trim(), website: form.website.value },
       });
-      saveMine([...loadMine(), { id: b.id, token: b.token }]);
-      try { localStorage.setItem("va-cliente", JSON.stringify({ name, phone: form.phone.value, email })); } catch {}
-      showTicket(b, name, email);
+      showTicket(b);
       state.cart = []; state.avail = null;
       form.note.value = "";
     } catch (e) {
       toast(e.message);
-      if (e.status === 409) { state.avail = null; state.slot = null; state.step = 2; renderFlow(); }
+      if (e.status === 401) { openAuth("login", () => renderFlow()); renderFlow(); }
+      else if (e.status === 409) { state.avail = null; state.slot = null; state.step = 2; renderFlow(); }
       else { next.disabled = false; next.textContent = "Confirmar reserva"; }
     } finally { submitting = false; }
   }
 
-  function showTicket(a, fullName, email) {
-    const svc = a.services.map((id) => byId(id).name).join(" + ");
-    const msg = `Hola, soy ${fullName}. Acabo de reservar ${svc} para el ${longDate(a.day)} a las ${fmtTime(a.start)} (reserva ${a.id}).`;
+  function showTicket(a) {
+    const svc = a.services.map(svcName).join(" + ");
+    const msg = `Hola, soy ${USER.name}. Acabo de reservar ${svc} para el ${longDate(a.day)} a las ${fmtTime(a.start)} (reserva ${a.id}).`;
     $("#ticket").innerHTML = `
       <img class="ticket__logo" src="img/victor-aguilar.svg" width="96" height="96" alt="" />
       <h2>Cita reservada</h2>
@@ -319,12 +471,12 @@
       <p class="ticket__time">${fmtTime(a.start)}</p>
       <p class="ticket__date">${longDate(a.day)}</p>
       <p class="ticket__svc">${esc(svc)} · ${fmtMoney(a.total)}</p>
-      ${email ? `<p class="ticket__mail">Te enviamos los detalles a <strong>${esc(email)}</strong> y te avisaremos ahí cuando la barbería confirme.</p>` : ""}
+      ${B.emailEnabled ? `<p class="ticket__mail">Te avisaremos a <strong>${esc(USER.email)}</strong> cuando la barbería confirme.</p>` : ""}
       <div class="ticket__actions">
         <a class="btn btn--gold" target="_blank" rel="noopener"
            href="https://wa.me/${B.whatsapp}?text=${encodeURIComponent(msg)}">Avisar por WhatsApp</a>
         <a class="btn btn--ghost" target="_blank" rel="noopener" href="${calendarLink(a)}">Agregar al calendario</a>
-        <button class="btn btn--ghost" data-action="done">Listo</button>
+        <button class="btn btn--ghost" data-action="done">Ver mis citas</button>
       </div>`;
     state.step = "done";
     renderFlow();
@@ -335,7 +487,7 @@
     const stamp = (m) => a.day.replace(/-/g, "") + "T" + pad(Math.floor(m / 60)) + pad(m % 60) + "00";
     const p = new URLSearchParams({
       action: "TEMPLATE",
-      text: `${a.services.map((id) => byId(id)?.name || id).join(" + ")} · ${B.name} Barbería`,
+      text: `${a.services.map(svcName).join(" + ")} · ${B.name} Barbería`,
       dates: `${stamp(a.start)}/${stamp(a.start + a.minutes)}`,
       ctz: "America/Costa_Rica",
       location: B.location,
@@ -358,6 +510,11 @@
     if (!el || !B) return;
     const ds = el.dataset;
 
+    if (ds.authOpen) {
+      const then = ds.then === "confirm" ? () => renderFlow() : null;
+      return openAuth(ds.authOpen, then);
+    }
+    if (ds.auth) return setAuthMode(ds.auth);
     if (ds.goto) return go(ds.goto);
     if (ds.cat) { state.category = ds.cat; state.query = ""; $("#search").value = ""; return renderServices(); }
     if (ds.toggle) {
@@ -366,14 +523,14 @@
       return renderCartbar();
     }
     if (ds.book) { state.cart = [ds.book]; state.avail = null; return openFlow({ step: 2 }); }
-    if (ds.quick) { state.cart = ["corte"]; state.avail = null; return openFlow({ step: 2, day: B.today, slot: +ds.quick }); }
+    if (ds.quick) { state.cart = [ds.svc]; state.avail = null; return openFlow({ step: 2, day: B.today, slot: +ds.quick }); }
+    if (ds.again) { state.cart = ds.again.split(","); state.avail = null; return openFlow({ step: 2 }); }
     if (ds.day) { state.day = ds.day; state.slot = null; return renderFlow(); }
     if (ds.slot) { state.slot = +ds.slot; return renderFlow(); }
     if (ds.cancel) {
       if (!confirm("¿Cancelar esta cita? El espacio quedará libre para otra persona.")) return;
-      const m = loadMine().find((x) => x.id === ds.cancel);
       try {
-        await api(`/api/bookings/${encodeURIComponent(m.id)}/cancel`, { method: "POST", body: { token: m.token } });
+        await api(`/api/bookings/${encodeURIComponent(ds.cancel)}/cancel`, { method: "POST" });
         toast("Cita cancelada");
       } catch (err) { toast(err.message); }
       return renderAppointments();
@@ -386,45 +543,43 @@
       case "flow-next":
         if (state.step === 3) return submitBooking();
         state.step += 1;
-        if (state.step === 3) prefill();
         return renderFlow();
       case "done": closeFlow(); return go("appointments");
+      case "auth-close": return closeAuth();
+      case "logout": return logout();
       case "retry": return boot();
     }
   });
 
-  function prefill() {
-    try {
-      const c = JSON.parse(localStorage.getItem("va-cliente"));
-      const f = $("#details");
-      if (c && !f.name.value) { f.name.value = c.name || ""; f.phone.value = c.phone || ""; f.email.value = c.email || ""; }
-    } catch {}
-  }
-
   $("#search").addEventListener("input", (e) => { state.query = e.target.value; renderServices(); });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#flow").hidden) closeFlow(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (!$("#auth").hidden) closeAuth();
+    else if (!$("#flow").hidden) closeFlow();
+  });
 
   async function boot() {
     const err = $("#boot-error");
     try {
-      const cfg = await api("/api/config");
-      B = cfg; SERVICES = cfg.services; CATEGORIES = cfg.categories;
-      // Sin correo configurado en el servidor, no pedimos el correo.
-      $("#details").email.closest(".field").hidden = !cfg.emailEnabled;
+      const [cfg, me] = await Promise.all([api("/api/config"), api("/api/me")]);
+      B = cfg; SERVICES = cfg.services; CATEGORIES = cfg.categories; RETIRED = cfg.retired || [];
+      USER = me.user;
       err.hidden = true;
-      // Enlace desde el correo: /?cita=ID&t=TOKEN → guardar la cita en este celular y mostrarla.
+      renderTabs();
       const qs = new URLSearchParams(location.search);
-      if (qs.get("cita") && qs.get("t")) {
-        const mine = loadMine();
-        if (!mine.some((m) => m.id === qs.get("cita"))) saveMine([...mine, { id: qs.get("cita"), token: qs.get("t") }]);
+      // Enlaces desde el correo: ?citas=1 (ver mis citas) y ?reset=TOKEN (nueva contraseña)
+      if (qs.has("citas") || qs.has("cita")) { history.replaceState(null, "", location.pathname); return go("appointments"); }
+      if (qs.get("reset")) {
+        resetToken = qs.get("reset");
         history.replaceState(null, "", location.pathname);
-        return go("appointments");
+        go("home");
+        return openAuth("reset");
       }
       go("home");
     } catch (e) {
       $("#boot-error p").textContent = e.message;
       err.hidden = false;
-      B = B || {}; // permite que funcione el botón Reintentar
+      B = B || {};
     }
   }
   boot();

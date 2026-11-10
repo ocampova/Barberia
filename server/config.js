@@ -47,6 +47,8 @@ module.exports = {
   ],
   reminderHoursBefore: 24, // recordatorio por correo, si el cliente dejó su correo
 
+  // Servicios INICIALES: se copian a la base de datos la primera vez que arranca el servidor.
+  // Después se administran desde el panel (/admin → Servicios): nombre, duración, precio, etc.
   services: [
     { id: "corte", cat: "barberia", name: "Corte caballero", price: 9000, min: 50, popular: true,
       desc: "Corte a tijera o máquina, lavado y peinado." },
