@@ -34,7 +34,7 @@ function limiter(max, windowMs) {
   };
 }
 
-function createApp({ repo, config, env = process.env, clock = () => new Date(), notify, mailer }) {
+function createApp({ repo, config, env = process.env, clock = () => new Date(), notify, mailer, backups = null }) {
   /* ---------- Servicios ---------- */
   // La primera vez se copian de config.services. Después se administran desde el panel.
   if (!repo.serviceCount()) {
@@ -432,6 +432,26 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
   /* ---------- Panel ---------- */
   route("GET", "/api/admin/settings", () => ({ cancelHours: cancelHours() }), { admin: true });
 
+  /* ---------- Copias de seguridad (panel) ---------- */
+  route("GET", "/api/admin/backups", () => {
+    if (!backups) return { enabled: false, offsite: false, backups: [], last: null };
+    return { enabled: true, offsite: backups.offsite, backups: backups.list().slice(0, 7), last: repo.setting("lastBackup", null) };
+  }, { admin: true });
+
+  route("POST", "/api/admin/backups", async () => {
+    if (!backups) throw new HttpError(503, "Las copias de seguridad no están activas en este servidor.");
+    const r = await backups.run("manual desde el panel");
+    repo.settingSet("lastBackup", { at: new Date().toISOString(), name: r.name, uploaded: r.uploaded });
+    return { status: 201, body: r };
+  }, { admin: true });
+
+  // Descarga una copia recién hecha (gzip de la base de datos SQLite).
+  route("GET", "/api/admin/backups/download", () => {
+    if (!backups) throw new HttpError(503, "Las copias de seguridad no están activas en este servidor.");
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+    return { raw: { type: "application/gzip", filename: `barberia-${stamp}.db.gz`, data: backups.snapshot() } };
+  }, { admin: true });
+
   route("PUT", "/api/admin/settings", ({ body }) => {
     const h = Number(body.cancelHours);
     if (!Number.isInteger(h) || h < 0 || h > 72) throw new HttpError(400, "El plazo debe ser entre 0 y 72 horas.");
@@ -765,6 +785,11 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
         throw new HttpError(415, "Formato no soportado.");
       const body = await readJson(req);
       const out = await r.handler({ params, query: url.searchParams, body, ip, req, res });
+      if (out && out.raw) {
+        res.writeHead(200, { "content-type": out.raw.type, "cache-control": "no-store",
+          "content-disposition": `attachment; filename="${out.raw.filename}"` });
+        return res.end(out.raw.data);
+      }
       if (out && out.status && out.body) return sendJson(res, out.status, out.body);
       sendJson(res, 200, out);
     } catch (e) {
