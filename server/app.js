@@ -630,10 +630,17 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
         return res.end("No encontrado");
       }
       const ext = path.extname(file);
-      res.writeHead(200, {
+      // "no-cache": el navegador siempre pregunta si hay una versión nueva; si no cambió,
+      // responde 304 sin reenviar el archivo. Así nunca queda una versión vieja de la app.
+      const etag = `W/"${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}"`;
+      const headers = {
         "content-type": MIME[ext] || "application/octet-stream",
-        "cache-control": ext === ".html" ? "no-cache" : "public, max-age=3600",
-      });
+        "cache-control": "no-cache",
+        etag,
+        "last-modified": st.mtime.toUTCString(),
+      };
+      if (req.headers["if-none-match"] === etag) { res.writeHead(304, headers); return res.end(); }
+      res.writeHead(200, headers);
       if (req.method === "HEAD") return res.end();
       fs.createReadStream(file).pipe(res);
     });

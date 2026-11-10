@@ -334,6 +334,11 @@ test("archivos estáticos y protección de rutas", async (t) => {
   assert.equal((await fetch(base + "/admin")).status, 200);
   assert.equal((await fetch(base + "/..%2fserver%2fconfig.js")).status, 403);
   assert.equal((await fetch(base + "/nada.js")).status, 404);
+  // Los archivos se revalidan siempre (sin versiones viejas en caché) y responden 304 si no cambiaron
+  const css = await fetch(base + "/css/styles.css");
+  assert.equal(css.headers.get("cache-control"), "no-cache");
+  const again = await fetch(base + "/css/styles.css", { headers: { "if-none-match": css.headers.get("etag") } });
+  assert.equal(again.status, 304);
   assert.equal((await call("GET", "/api/nada")).status, 404);
 });
 
