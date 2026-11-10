@@ -73,6 +73,26 @@
   async function openTeam() {
     $("#team").hidden = false;
     renderTeam();
+    renderSources(90);
+    try { $("#set-cancel").value = String((await api("/api/admin/settings")).cancelHours); } catch {}
+  }
+  $("#set-cancel").addEventListener("change", async (e) => {
+    try {
+      const r = await api("/api/admin/settings", { method: "PUT", body: { cancelHours: Number(e.target.value) } });
+      toast(r.cancelHours ? `Cancelación hasta ${r.cancelHours} h antes` : "Cancelación en cualquier momento");
+    } catch (err) { toast(err.message); }
+  });
+  async function renderSources(days) {
+    $$("#src-range button").forEach((b) => b.classList.toggle("is-active", Number(b.dataset.srcDays) === days));
+    try {
+      const r = await api(`/api/admin/sources?days=${days}`);
+      $("#src-list").innerHTML = r.total
+        ? r.sources.map((x) => {
+            const pct = Math.round((x.count / r.total) * 100);
+            return `<div class="src-row"><span>${esc(x.label)}</span><span class="src-bar"><i style="width:${pct}%"></i></span><strong>${x.count}</strong></div>`;
+          }).join("") + `<p class="adm-hint" style="margin:8px 0 0">${r.total} cliente(s) nuevo(s) registrados.</p>`
+        : `<p class="adm-hint" style="margin:8px 0 0">Todavía no hay clientes registrados en este periodo.</p>`;
+    } catch (err) { toast(err.message); }
   }
   async function renderTeam() {
     try {
@@ -267,6 +287,7 @@
     }
     if (ds.schcat) { schCategory = ds.schcat; selected.clear(); return renderSchedule(); }
     if (ds.svcEdit) return openSvcEditor(ds.svcEdit);
+    if (ds.srcDays !== undefined) return renderSources(Number(ds.srcDays));
     if (ds.teamRemove) {
       if (!confirm(`¿Quitarle el acceso al panel a ${ds.teamName}? Su cuenta de cliente sigue activa.`)) return;
       try { await api(`/api/admin/team/${ds.teamRemove}`, { method: "DELETE" }); toast("Acceso quitado"); renderTeam(); }

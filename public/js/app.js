@@ -150,6 +150,17 @@
   }
 
   /* ---------------- Mis citas ---------------- */
+  // ¿Todavía está dentro del plazo para cancelar desde la app?
+  function canCancel(a, today) {
+    const hours = B.cancelHours || 0;
+    if (!hours) return true;
+    const days = (asDate(a.day) - asDate(today)) / 86400000;
+    const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+    return days * 1440 + a.start - nowMin >= hours * 60;
+  }
+  const cancelRule = () => B.cancelHours
+    ? `Puedes cancelar desde la app hasta ${B.cancelHours} ${B.cancelHours === 1 ? "hora" : "horas"} antes de tu cita; después, escríbenos por WhatsApp.`
+    : "Puedes cancelar desde la app en cualquier momento antes de tu cita.";
   const loginPrompt = (text) => `<div class="empty-state">
       <p>${text}</p>
       <div class="auth-cta">
@@ -185,7 +196,8 @@
         ${a.note ? `<p class="appt__note">“${esc(a.note)}”</p>` : ""}
         <div class="appt__actions">
           ${active ? `<a class="btn btn--ghost" href="${calendarLink(a)}" target="_blank" rel="noopener">Agregar al calendario</a>
-                      <button class="btn btn--ghost" data-cancel="${esc(a.id)}">Cancelar</button>`
+                      ${canCancel(a, today) ? `<button class="btn btn--ghost" data-cancel="${esc(a.id)}">Cancelar</button>`
+                        : `<a class="btn btn--ghost" target="_blank" rel="noopener" href="https://wa.me/${B.whatsapp}?text=${encodeURIComponent(`Hola, necesito cambiar mi cita del ${longDate(a.day)} a las ${fmtTime(a.start)}.`)}">Escribir por WhatsApp</a>`}`
                    : again ? `<button class="btn btn--ghost" data-again="${esc(a.services.join(","))}">Reservar de nuevo</button>` : ""}
         </div>
       </article>`;
@@ -312,8 +324,10 @@
   $("#form-register").addEventListener("submit", (e) => {
     const f = e.target;
     if (f.password.value.length < 8) { e.preventDefault(); return toast("La contraseña debe tener al menos 8 caracteres"); }
+    if (!f.acceptPrivacy.checked) { e.preventDefault(); return toast("Debes aceptar el aviso de privacidad"); }
     submitAuth(e, "/api/auth/register", { name: f.name.value, phone: f.phone.value, email: f.email.value,
-      password: f.password.value, website: f.website.value }, (u) => `¡Bienvenido, ${u.name.split(" ")[0]}!`);
+      password: f.password.value, website: f.website.value, source: f.source.value, acceptPrivacy: true },
+      (u) => `¡Bienvenido, ${u.name.split(" ")[0]}!`);
   });
   $("#form-reset").addEventListener("submit", (e) => submitAuth(e, "/api/auth/reset",
     { token: resetToken, password: e.target.password.value }, () => "Contraseña actualizada"));
@@ -432,7 +446,7 @@
         <p class="summary__when">${longDate(state.day)} · ${fmtTime(state.slot)}</p>
         ${cartItems().map((s) => `<div class="summary__row"><span>${esc(s.name)}</span><span>${fmtMoney(s.price)}</span></div>`).join("")}
         <div class="summary__row"><span>Termina aprox.</span><span>${fmtTime(state.slot + cartMinutes())}</span></div>`;
-      $("#policy-list").innerHTML = B.policies.map((p) => `<li>${esc(p)}</li>`).join("");
+      $("#policy-list").innerHTML = [cancelRule(), ...B.policies].map((p) => `<li>${esc(p)}</li>`).join("");
       next.textContent = USER ? "Confirmar reserva" : "Inicia sesión para confirmar";
       next.disabled = false;
     }
@@ -564,6 +578,8 @@
     try {
       const [cfg, me] = await Promise.all([api("/api/config"), api("/api/me")]);
       B = cfg; SERVICES = cfg.services; CATEGORIES = cfg.categories; RETIRED = cfg.retired || [];
+      $("#reg-source").innerHTML = `<option value="">Elige una opción</option>` +
+        (cfg.sources || []).map((x) => `<option value="${esc(x.id)}">${esc(x.label)}</option>`).join("");
       USER = me.user;
       err.hidden = true;
       renderTabs();

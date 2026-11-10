@@ -42,7 +42,7 @@
       <header class="topbar adm-top">
         <h1>Panel</h1>
         <div class="adm-top__actions">
-          <button class="link" data-action="team">Equipo</button>
+          <button class="link" data-action="team">Ajustes</button>
           <a class="link" href="/" title="Ver la app de clientes">App</a>
           <button class="link" data-action="logout">Salir <span class="muted" id="me-name"></span></button>
         </div>
@@ -204,10 +204,38 @@
     <div class="flow" id="team" hidden role="dialog" aria-modal="true" aria-labelledby="team-title">
       <header class="flow__head">
         <span></span>
-        <strong id="team-title">Equipo</strong>
+        <strong id="team-title">Ajustes</strong>
         <button class="iconbtn" data-action="close-team" aria-label="Cerrar">×</button>
       </header>
       <div class="flow__body pane">
+        <section class="card-form">
+          <h2>Reglas de reserva</h2>
+          <label class="field"><span>Los clientes pueden cancelar desde la app hasta…</span>
+            <select id="set-cancel">
+              <option value="0">En cualquier momento antes de la cita</option>
+              <option value="1">1 hora antes</option>
+              <option value="2">2 horas antes</option>
+              <option value="3">3 horas antes</option>
+              <option value="4">4 horas antes</option>
+              <option value="6">6 horas antes</option>
+              <option value="12">12 horas antes</option>
+              <option value="24">24 horas antes (un día)</option>
+              <option value="48">48 horas antes (dos días)</option>
+            </select></label>
+          <p class="adm-hint" style="margin:0">Después de ese plazo, la app les muestra un botón para escribir por WhatsApp.</p>
+        </section>
+
+        <section class="card-form" style="margin-top:14px">
+          <h2>¿Cómo nos conocieron?</h2>
+          <div class="seg seg--sm" id="src-range">
+            <button type="button" data-src-days="30">30 días</button>
+            <button type="button" data-src-days="90" class="is-active">90 días</button>
+            <button type="button" data-src-days="0">Todo</button>
+          </div>
+          <div id="src-list"></div>
+        </section>
+
+        <h2 class="adm-section">Equipo</h2>
         <p class="adm-hint">Estas cuentas pueden entrar al panel. Para agregar a alguien, primero debe crear su cuenta en la app.</p>
         <div id="team-list"></div>
         <form id="team-form" class="card-form" novalidate>

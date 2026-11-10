@@ -308,3 +308,11 @@ a { color: inherit; text-decoration: none; }
 .appt--cta p { margin: 0; color: var(--muted); }
 .appt--cta .btn { min-height: 42px; }
 .appt__tag--completada { color: var(--muted); }
+
+/* ---------- Privacidad ---------- */
+.check { display: flex; gap: 10px; align-items: flex-start; margin: 4px 0 16px; font-size: 14px; color: var(--muted); }
+.check input { flex: none; width: 20px; height: 20px; margin-top: 1px; accent-color: var(--gold); }
+.check .link { font-size: inherit; text-decoration: underline; }
+.field select { width: 100%; padding: 14px 16px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); color: var(--text); font: inherit; }
+.legal { text-align: center; margin: 0 0 12px; font-size: 12px; }
+.legal a { color: var(--muted); text-decoration: underline; }

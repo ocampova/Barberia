@@ -60,6 +60,7 @@
           </a>
         </div>
         <p class="slogan">Más que una barbería, un club de amigos</p>
+        <p class="legal"><a href="privacidad.html">Aviso de privacidad</a></p>
       </div>
     </section>
 
@@ -192,6 +193,12 @@
             <input name="email" type="email" inputmode="email" autocomplete="email" maxlength="120" required /></label>
           <label class="field"><span>Contraseña (mínimo 8 caracteres)</span>
             <input name="password" type="password" autocomplete="new-password" minlength="8" required /></label>
+          <label class="field"><span>¿Cómo nos conociste? (opcional)</span>
+            <select name="source" id="reg-source"><option value="">Elige una opción</option></select></label>
+          <label class="check">
+            <input type="checkbox" name="acceptPrivacy" required />
+            <span>Leí y acepto el <a href="privacidad.html" target="_blank" rel="noopener" class="link">aviso de privacidad</a>.</span>
+          </label>
           <input name="website" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true" />
           <button class="btn btn--gold btn--block">Crear cuenta</button>
           <p class="auth__fine">Usamos tus datos solo para gestionar tus citas.</p>

@@ -32,6 +32,19 @@ module.exports = {
   leadMinutes: 30, // anticipación mínima para reservar hoy
   daysAhead: 21,
   maxActivePerPhone: 3,
+  cancelHours: 2, // valor inicial: hasta cuántas horas antes se puede cancelar desde la app (se cambia en el panel)
+  privacyVersion: "2026-11", // cambia si se modifica el aviso de privacidad (public/privacidad.html)
+  sources: [ // opciones de "¿Cómo nos conociste?"
+    { id: "instagram", label: "Instagram" },
+    { id: "facebook", label: "Facebook" },
+    { id: "tiktok", label: "TikTok" },
+    { id: "google", label: "Google o Google Maps" },
+    { id: "referido", label: "Un amigo o familiar" },
+    { id: "flyer", label: "Flyer o afiche" },
+    { id: "local", label: "Pasé por el local" },
+    { id: "cliente", label: "Ya era cliente" },
+    { id: "otro", label: "Otro" },
+  ],
 
   policies: [
     "Si por alguna razón no puedes asistir, avísanos con anticipación para liberar el espacio a otro cliente.",

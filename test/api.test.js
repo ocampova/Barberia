@@ -46,7 +46,7 @@ async function setup(t, env = {}, opts = {}) {
   async function user(extra = {}) {
     const c = browser();
     n++;
-    const r = await c("POST", "/api/auth/register", {
+    const r = await c("POST", "/api/auth/register", { acceptPrivacy: true, 
       name: "Juan Pérez", phone: `8888${String(1000 + n)}`, email: `juan${n}@example.com`, password: "secreto123", ...extra });
     assert.equal(r.status, 201, JSON.stringify(r.body));
     c.user = r.body.user;
@@ -91,7 +91,7 @@ test("registro, sesión, perfil y cierre de sesión", async (t) => {
   const c = browser();
   assert.deepEqual((await c("GET", "/api/me")).body, { user: null });
 
-  const r = await c("POST", "/api/auth/register", { name: "Ana Mora", phone: "8777 6655", email: "Ana@Example.com", password: "secreto123" });
+  const r = await c("POST", "/api/auth/register", { acceptPrivacy: true,  name: "Ana Mora", phone: "8777 6655", email: "Ana@Example.com", password: "secreto123" });
   assert.equal(r.status, 201);
   assert.equal(r.body.user.phone, "50687776655");
   assert.equal(r.body.user.email, "ana@example.com");
@@ -106,9 +106,9 @@ test("registro, sesión, perfil y cierre de sesión", async (t) => {
 
   // Duplicados
   const other = browser();
-  assert.equal((await other("POST", "/api/auth/register", { name: "X Y", phone: "87776655", email: "otra@example.com", password: "secreto123" })).status, 409);
-  assert.equal((await other("POST", "/api/auth/register", { name: "X Y", phone: "86665544", email: "ANA@example.com", password: "secreto123" })).status, 409);
-  assert.equal((await other("POST", "/api/auth/register", { name: "X Y", phone: "86665544", email: "x@example.com", password: "corta" })).status, 400);
+  assert.equal((await other("POST", "/api/auth/register", { acceptPrivacy: true,  name: "X Y", phone: "87776655", email: "otra@example.com", password: "secreto123" })).status, 409);
+  assert.equal((await other("POST", "/api/auth/register", { acceptPrivacy: true,  name: "X Y", phone: "86665544", email: "ANA@example.com", password: "secreto123" })).status, 409);
+  assert.equal((await other("POST", "/api/auth/register", { acceptPrivacy: true,  name: "X Y", phone: "86665544", email: "x@example.com", password: "corta" })).status, 400);
 
   // Editar perfil
   const p = await c("PATCH", "/api/me", { name: "Ana María Mora", phone: "87776655", email: "ana.maria@example.com" });
@@ -511,4 +511,48 @@ test("horario semanal: solo días habilitados", async (t) => {
   assert.equal((await adm("PUT", "/api/admin/schedule/week", { category: "barberia", week: { ...week, 1: [[600, 500]] } })).status, 400);
   assert.equal((await adm("PUT", "/api/admin/schedule/days", { category: "nope", days: ["2026-11-12"], ranges: [] })).status, 400);
   assert.equal((await call("PUT", "/api/admin/schedule/week", { category: "barberia", week })).status, 401);
+});
+
+/* ---------------- Fase 1: privacidad, cancelación, origen ---------------- */
+
+test("registro exige aceptar la privacidad y guarda de dónde viene el cliente", async (t) => {
+  const { browser, admin } = await setup(t);
+  const c = browser();
+  const base = { name: "Rosa Vargas", phone: "86001122", email: "rosa@example.com", password: "secreto123" };
+  const no = await c("POST", "/api/auth/register", base);
+  assert.equal(no.status, 400);
+  assert.match(no.body.error, /privacidad/);
+  assert.equal((await c("POST", "/api/auth/register", { ...base, acceptPrivacy: "si" })).status, 400);
+  assert.equal((await c("POST", "/api/auth/register", { ...base, acceptPrivacy: true, source: "instagram" })).status, 201);
+  const d = browser();
+  await d("POST", "/api/auth/register", { name: "Luis Solano", phone: "86001133", email: "luis@example.com", password: "secreto123", acceptPrivacy: true, source: "inventado" });
+
+  const adm = await admin();
+  const s = (await adm("GET", "/api/admin/sources")).body;
+  assert.equal(s.total, 2);
+  assert.deepEqual(s.sources.map((x) => [x.label, x.count]).sort(), [["Instagram", 1], ["Sin respuesta", 1]]);
+  assert.equal((await c("GET", "/api/admin/sources")).status, 403);
+});
+
+test("plazo de cancelación configurable desde el panel", async (t) => {
+  // Lunes 9 de noviembre, 8:00 a.m.
+  const { call, user, admin } = await setup(t);
+  const adm = await admin();
+  assert.equal((await call("GET", "/api/config")).body.cancelHours, 2); // valor inicial
+
+  const c = await user();
+  const hoy = (await c("POST", "/api/bookings", booking({ day: "2026-11-09", start: 570 }))).body; // 9:30 → en 1.5 h
+  const manana = (await c("POST", "/api/bookings", booking({ day: "2026-11-10", start: 600 }))).body;
+
+  const x = await c("POST", `/api/bookings/${hoy.id}/cancel`);
+  assert.equal(x.status, 409);
+  assert.match(x.body.error, /hasta 2 horas antes/);
+  assert.equal((await c("POST", `/api/bookings/${manana.id}/cancel`)).status, 200);
+
+  // El barbero cambia el plazo a 1 hora: ahora sí se puede
+  assert.equal((await adm("PUT", "/api/admin/settings", { cancelHours: 99 })).status, 400);
+  assert.equal((await adm("PUT", "/api/admin/settings", { cancelHours: 1 })).body.cancelHours, 1);
+  assert.equal((await call("GET", "/api/config")).body.cancelHours, 1);
+  assert.equal((await c("POST", `/api/bookings/${hoy.id}/cancel`)).status, 200);
+  assert.equal((await c("PUT", "/api/admin/settings", { cancelHours: 0 })).status, 403);
 });

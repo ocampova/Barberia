@@ -203,6 +203,10 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     if (!Number.isInteger(start) || start < 0 || start >= 1440) throw new HttpError(400, "Hora inválida.");
   }
 
+  /* ---------- Ajustes del negocio ---------- */
+  const cancelHours = () => repo.setting("cancelHours", config.cancelHours ?? 0);
+  const sourceIds = new Set((config.sources || []).map((x) => x.id));
+
   /* ---------- Primer administrador ---------- */
   // Con ADMIN_EMAIL y ADMIN_PASSWORD, al arrancar se crea esa cuenta de administrador si no existe.
   // Nunca se promueve una cuenta que ya existía (alguien pudo registrarla antes con ese correo),
@@ -257,7 +261,8 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
       status: openStatus(categories[0].id),
       services: all.filter((x) => x.active).map(toPublicService),
       retired: all.filter((x) => !x.active).map(({ id, name }) => ({ id, name })),
-      today: now().day, nowMinutes: now().minutes, emailEnabled: mail.enabled !== false };
+      today: now().day, nowMinutes: now().minutes, emailEnabled: mail.enabled !== false,
+      cancelHours: cancelHours(), sources: config.sources || [], privacyVersion: config.privacyVersion };
   });
 
   // Resumen de varios días: cuántos espacios libres hay en cada uno.
@@ -317,6 +322,10 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     const n = now();
     if (!ACTIVE.has(b.status)) throw new HttpError(409, "Esta cita ya no está activa.");
     if (b.day < n.day || (b.day === n.day && b.start <= n.minutes)) throw new HttpError(409, "Esta cita ya pasó.");
+    const hours = cancelHours();
+    const minutesLeft = (Date.parse(b.day + "T00:00:00Z") - Date.parse(n.day + "T00:00:00Z")) / 60000 + b.start - n.minutes;
+    if (hours > 0 && minutesLeft < hours * 60)
+      throw new HttpError(409, `Las citas se pueden cancelar desde la app hasta ${hours} ${hours === 1 ? "hora" : "horas"} antes. Escríbenos por WhatsApp.`);
     repo.setStatus(b.id, "cancelada");
     emailClient("cancelada", b, req, { byClient: true });
     send(`Cita cancelada: ${b.name}`, `${b.day} · ${fmtTime(b.start)} quedó libre.`);
@@ -334,9 +343,13 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     };
     if (!u.email) throw new HttpError(400, "Escribe tu correo electrónico.");
     const password = cleanPassword(body.password);
+    if (body.acceptPrivacy !== true) throw new HttpError(400, "Debes aceptar el aviso de privacidad para crear tu cuenta.");
+    const source = sourceIds.has(body.source) ? body.source : "";
     const id = repo.transaction(() => {
       checkUnique(u);
-      return repo.userInsert({ ...u, pass_hash: hashPassword(password) });
+      const newId = repo.userInsert({ ...u, pass_hash: hashPassword(password) });
+      repo.userSetSignup(newId, source, config.privacyVersion || "1");
+      return newId;
     });
     startSession(req, res, id);
     return { status: 201, body: { user: publicUser(repo.userById(id)) } };
@@ -417,6 +430,24 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
   });
 
   /* ---------- Panel ---------- */
+  route("GET", "/api/admin/settings", () => ({ cancelHours: cancelHours() }), { admin: true });
+
+  route("PUT", "/api/admin/settings", ({ body }) => {
+    const h = Number(body.cancelHours);
+    if (!Number.isInteger(h) || h < 0 || h > 72) throw new HttpError(400, "El plazo debe ser entre 0 y 72 horas.");
+    repo.settingSet("cancelHours", h);
+    return { cancelHours: h };
+  }, { admin: true });
+
+  // De dónde vienen los clientes (registros de los últimos N días; 0 = todos).
+  route("GET", "/api/admin/sources", ({ query }) => {
+    const days = Math.min(Math.max(Number(query.get("days") || 0), 0), 3650);
+    const since = days ? new Date(clock().getTime() - days * 86400e3).toISOString() : "0000";
+    const labels = Object.fromEntries((config.sources || []).map((x) => [x.id, x.label]));
+    const rows = repo.sources(since).map((r) => ({ source: r.source, label: labels[r.source] || "Sin respuesta", count: r.n }));
+    return { days, total: rows.reduce((t, r) => t + r.count, 0), sources: rows };
+  }, { admin: true });
+
   // Equipo: cuentas con acceso al panel.
   route("GET", "/api/admin/team", () => ({ admins: repo.admins() }), { admin: true });
 

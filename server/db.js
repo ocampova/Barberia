@@ -93,6 +93,11 @@ function openDb(file) {
   if (!cols.includes("user_id")) db.exec("ALTER TABLE bookings ADD COLUMN user_id INTEGER");
   const ucols = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
   if (!ucols.includes("role")) db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'cliente'");
+  if (!ucols.includes("source")) db.exec("ALTER TABLE users ADD COLUMN source TEXT NOT NULL DEFAULT ''");
+  if (!ucols.includes("privacy_accepted_at")) db.exec("ALTER TABLE users ADD COLUMN privacy_accepted_at TEXT");
+  if (!ucols.includes("privacy_version")) db.exec("ALTER TABLE users ADD COLUMN privacy_version TEXT");
+  // Ajustes del negocio editables desde el panel (clave → JSON).
+  db.exec("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
   db.exec("CREATE INDEX IF NOT EXISTS bookings_user ON bookings(user_id)");
   db.exec("PRAGMA foreign_keys = ON");
   return db;
@@ -124,6 +129,12 @@ function repo(db) {
     userUpdate: db.prepare("UPDATE users SET name = ?, phone = ?, email = ?, updated_at = ? WHERE id = ?"),
     userSetPass: db.prepare("UPDATE users SET pass_hash = ?, updated_at = ? WHERE id = ?"),
     userSetRole: db.prepare("UPDATE users SET role = ?, updated_at = ? WHERE id = ?"),
+    userSetSignup: db.prepare("UPDATE users SET source = ?, privacy_accepted_at = ?, privacy_version = ? WHERE id = ?"),
+    sources: db.prepare(`SELECT source, COUNT(*) AS n FROM users WHERE role = 'cliente' AND created_at >= ?
+      GROUP BY source ORDER BY n DESC`),
+    settingGet: db.prepare("SELECT value FROM settings WHERE key = ?"),
+    settingSet: db.prepare(`INSERT INTO settings (key, value) VALUES (?, ?)
+      ON CONFLICT (key) DO UPDATE SET value = excluded.value`),
     admins: db.prepare("SELECT id, name, phone, email, created_at FROM users WHERE role = 'admin' ORDER BY name"),
     sessionInsert: db.prepare("INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)"),
     sessionGet: db.prepare("SELECT * FROM sessions WHERE token_hash = ? AND expires_at > ?"),
@@ -181,6 +192,10 @@ function repo(db) {
     userUpdate: (id, u) => q.userUpdate.run(u.name, u.phone, u.email, new Date().toISOString(), id),
     userSetPass: (id, h) => q.userSetPass.run(h, new Date().toISOString(), id),
     userSetRole: (id, role) => q.userSetRole.run(role, new Date().toISOString(), id),
+    userSetSignup: (id, source, version) => q.userSetSignup.run(source, new Date().toISOString(), version, id),
+    sources: (since) => q.sources.all(since),
+    setting(key, fallback) { const r = q.settingGet.get(key); return r ? JSON.parse(r.value) : fallback; },
+    settingSet: (key, value) => q.settingSet.run(key, JSON.stringify(value)),
     admins: () => q.admins.all(),
     sessionInsert: (h, uid, exp) => q.sessionInsert.run(h, uid, exp),
     sessionGet: (h) => q.sessionGet.get(h, Date.now()),

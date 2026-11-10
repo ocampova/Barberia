@@ -129,3 +129,14 @@
 .team-row strong { display: block; }
 .team-row small { color: var(--muted); font-size: 13px; word-break: break-all; }
 #team .card-form { margin: 18px 0 8px; }
+
+/* ---------- Ajustes ---------- */
+.adm-section { font: 600 16px var(--display); text-transform: uppercase; letter-spacing: .05em; margin: 24px 0 4px; }
+.adm-section + .adm-hint { margin: 0 0 6px; }
+.seg--sm { margin: 0 0 10px; }
+.seg--sm button { padding: 7px 8px; font-size: 13px; }
+.src-row { display: grid; grid-template-columns: 9.5em 1fr 2em; align-items: center; gap: 10px; padding: 6px 0; font-size: 14px; }
+.src-row strong { text-align: right; }
+.src-bar { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.src-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--gold), var(--gold-2)); border-radius: 4px; }
+#team .card-form .field select { background: var(--bg); }
