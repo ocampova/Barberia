@@ -1,21 +1,30 @@
 # Kit de marca
 
-Los logos de Víctor Aguilar Barbería y Seimar Salón, reconstruidos en vectores a partir de una imagen de 300×100 px.
+Logos oficiales de Víctor Aguilar Barbería y Seimar Salón.
+
+## Fuente: `svg/`
+
+Son los archivos que entregó el cliente. **No hay que editarlos a mano:** todo lo demás se genera a partir de ellos.
 
 | Archivo | Para qué |
 |---|---|
-| `victor-aguilar.svg`, `seimar-salon.svg` | Vectores: se ven nítidos a cualquier tamaño (web, imprenta, rótulos) |
-| `logos-transparente.svg` | Los dos logos juntos, con fondo transparente |
-| `*-2048.png` | PNG en alta resolución con fondo transparente (redes, presentaciones) |
-| `*-fondo-negro.png` | Los mismos, sobre fondo negro (perfil de Instagram/WhatsApp) |
-| `logos-3000x1000-fondo-negro.png` | Banner con los dos logos |
+| `Victor_Aguilar.svg`, `Seimar.svg` | Con fondo negro |
+| `Victor_Aguilar_transparente.svg`, `Seimar_transparente.svg` | Con fondo transparente (los que usa la app) |
+| `logos-juntos-transparente.svg` | Los dos lado a lado (portada de la app y correos) |
 
-## Cómo se hicieron
+## PNG generados: `png/`
 
-- **Las tijeras y el perfil de Seimar** se vectorizaron a partir de la imagen original, ampliada y suavizada.
-- **Los textos** se rehicieron con la tipografía **Montserrat** (de Google Fonts, licencia libre) convertida a trazos, con las mismas posiciones y espaciado del original.
-- **El círculo y el óvalo** se trazaron como figuras geométricas exactas.
+| Archivo | Para qué |
+|---|---|
+| `*-2048.png` | Fondo transparente: redes y presentaciones |
+| `*-2048-fondo-negro.png` | Foto de perfil de Instagram o WhatsApp |
+| `logos-juntos-2352x1200.png` | Los dos juntos, transparente |
+| `banner-3000x1000-fondo-negro.png` | Portada de redes |
 
-Es una reconstrucción fiel, pero no idéntica al archivo del diseñador. Si alguien tiene el archivo original (`.ai`, `.pdf`, `.eps` o `.svg`), conviene usar ese para imprenta grande.
+Para regenerarlos, junto con los íconos de la app y el logo del correo:
 
-Para regenerarlos: `build_logo.py` (necesita `vtracer`, `fonttools` y Pillow) y `export.js` (Playwright).
+```bash
+node brand/export.js
+```
+
+Nota: los SVG dicen en su descripción que son una reconstrucción hecha a partir de una referencia de baja resolución. Si aparece el archivo del diseñador (`.ai`, `.eps` o `.pdf`), conviene usarlo para imprenta grande.
