@@ -79,7 +79,25 @@ npm run dev          # http://localhost:8080   panel: /admin   admin@barberia.te
 npm test             # pruebas automáticas
 ```
 
-## Publicarla en internet
+## Publicarla en Railway
+
+1. **New Project → Deploy from GitHub repo**, elegir este repositorio y la rama a publicar. Railway usa el `Dockerfile` y `railway.json`, que ya traen la verificación en `/api/health` y el reinicio automático si falla.
+2. En el servicio: **Settings → Volumes → New Volume** con *mount path* `/data`. Ahí vive la base de datos; sin el volumen, los datos se pierden en cada nueva versión.
+3. **Variables:**
+
+| Variable | Valor |
+|---|---|
+| `ADMIN_EMAIL` | correo del primer administrador |
+| `ADMIN_PASSWORD` | contraseña inicial (mínimo 8 caracteres); se cambia después desde el perfil |
+| `ADMIN_NAME` | `Víctor Aguilar` |
+| `ADMIN_PHONE` | teléfono del administrador |
+| `TRUST_PROXY` | `1` |
+| `RAILWAY_RUN_UID` | `0` (el volumen de Railway se monta como root) |
+| `PUBLIC_URL` | `https://victoraguilar.elcorte.app` (cuando el dominio esté conectado) |
+
+4. **Settings → Networking → Generate Domain** para probar con una dirección `*.up.railway.app`, y luego **Custom Domain** para conectar el dominio propio.
+
+## Publicarla en otro hosting
 
 Cualquier hosting que corra Node o Docker y tenga **disco persistente** para la base de datos sirve: Railway, Render, Fly.io o un VPS.
 

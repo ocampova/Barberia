@@ -16,10 +16,24 @@ if (!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM)
 if (!process.env.PUBLIC_URL)
   console.warn("⚠  Sin PUBLIC_URL: los recordatorios por correo no incluirán el enlace a la cita.");
 
-const handler = createApp({ repo: repo(openDb(DB_FILE)), config });
-http.createServer(handler).listen(PORT, () => {
+const db = openDb(DB_FILE);
+const handler = createApp({ repo: repo(db), config });
+const server = http.createServer(handler).listen(PORT, () => {
   console.log(`Barbería lista en http://localhost:${PORT}  (panel: /admin)`);
 });
+
+// Apagado ordenado: en cada nueva versión el hosting envía SIGTERM. Se dejan terminar
+// las peticiones en curso y se cierra la base de datos antes de salir.
+let closing = false;
+for (const sig of ["SIGTERM", "SIGINT"]) {
+  process.on(sig, () => {
+    if (closing) return;
+    closing = true;
+    console.log(`${sig} recibido: cerrando…`);
+    server.close(() => { try { db.close(); } catch {} process.exit(0); });
+    setTimeout(() => process.exit(0), 10_000).unref();
+  });
+}
 
 // Recordatorios por correo: se revisa cada 10 minutos.
 const tick = () => {
