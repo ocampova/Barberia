@@ -9,6 +9,8 @@
   let view = "pending";
   let agendaDay;
   let lastPending = null;
+  let emailEnabled = false;
+  const shown = new Map(); // citas en pantalla, por id
 
   const DOW = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
   const asDate = (day) => new Date(day + "T12:00:00");
@@ -73,6 +75,7 @@
   }
 
   function bookingHTML(b, showDate) {
+    shown.set(b.id, b);
     const done = !["pendiente", "confirmada"].includes(b.status);
     const actions = [];
     if (b.status === "pendiente") {
@@ -96,6 +99,7 @@
       <p class="bk__name">${esc(b.name)}</p>
       <p class="bk__meta">${esc(svcNames(b.services))} · ${fmtMoney(b.total)}</p>
       <p class="bk__meta">${phone}${b.source === "panel" ? " · agregada en el panel" : ""}</p>
+      ${b.email ? `<p class="bk__meta">✉ ${esc(b.email)}</p>` : ""}
       ${b.note ? `<p class="bk__note">${esc(b.note)}</p>` : ""}
       ${actions.length ? `<div class="bk__actions">${actions.join("")}</div>` : ""}
     </article>`;
@@ -137,8 +141,9 @@
 
   async function refreshBadge() {
     try {
-      const { pending, today } = await api("/api/admin/summary");
-      C.today = today;
+      const { pending, today, emailEnabled: mailOn } = await api("/api/admin/summary");
+      C.today = today; emailEnabled = mailOn;
+      $("#new-email").hidden = !mailOn;
       const badge = $("#badge");
       badge.hidden = !pending; badge.textContent = pending;
       document.title = (pending ? `(${pending}) ` : "") + "Panel · Barbería";
@@ -161,13 +166,17 @@
     if (ds.set) {
       const status = ds.set;
       if (["cancelada", "rechazada"].includes(status) && !confirm(`¿Marcar como ${STATUS[status]}?`)) return;
-      // Abrimos la ventana antes del await para que el navegador no la bloquee.
-      const win = ["confirmada", "rechazada", "cancelada"].includes(status) ? window.open("", "_blank") : null;
+      // Si el cliente dejó correo, el aviso le llega por ahí. Si no, abrimos WhatsApp
+      // (la ventana se abre antes del await para que el navegador no la bloquee).
+      const known = shown.get(ds.id);
+      const viaEmail = emailEnabled && known && known.email;
+      const notifies = ["confirmada", "rechazada", "cancelada"].includes(status);
+      const win = notifies && !viaEmail && known && known.phone ? window.open("", "_blank") : null;
       try {
         const b = await api(`/api/admin/bookings/${ds.id}`, { method: "PATCH", body: { status } });
         const link = waLink(b, status);
         if (win && link) win.location = link; else if (win) win.close();
-        toast(`Cita ${STATUS[status]}`);
+        toast(b.emailed ? `Cita ${STATUS[status]} · correo enviado al cliente` : `Cita ${STATUS[status]}`);
       } catch (err) { if (win) win.close(); toast(err.message); }
       refreshBadge();
       return go(view);
@@ -220,8 +229,8 @@
     try {
       await api("/api/admin/bookings", { method: "POST", body: {
         services, day: f.day.value, start: toMin(f.time.value), name: f.name.value,
-        phone: f.phone.value, note: f.note.value, force: f.force.checked } });
-      toast("Cita guardada");
+        phone: f.phone.value, email: f.email.value, note: f.note.value, force: f.force.checked } });
+      toast(f.email.value && emailEnabled ? "Cita guardada · confirmación enviada" : "Cita guardada");
       $("#new-booking").hidden = true;
       agendaDay = f.day.value; go("agenda");
     } catch (err) { toast(err.message); }

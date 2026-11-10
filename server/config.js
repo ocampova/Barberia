@@ -34,14 +34,16 @@ module.exports = {
   policies: [
     "Si por alguna razón no puedes asistir, avísanos con anticipación para liberar el espacio a otro cliente.",
     "Te agradecemos venir sin acompañantes, salvo que lo requieras por alguna condición especial.",
-    "Tu reserva queda pendiente hasta que la barbería la confirme. Te avisaremos por WhatsApp.",
+    "Tu reserva queda pendiente hasta que la barbería la confirme. Te avisaremos por correo o WhatsApp.",
   ],
 
   // capacity = cuántas citas pueden atenderse a la vez (sillas o profesionales).
+  // staff = nombre que aparece como "Profesional" en los correos (opcional).
   categories: [
-    { id: "barberia", name: "Barbería", capacity: 1 },
+    { id: "barberia", name: "Barbería", capacity: 1, staff: "Víctor Aguilar" },
     { id: "salon", name: "Seimar Salón", capacity: 1 },
   ],
+  reminderHoursBefore: 24, // recordatorio por correo, si el cliente dejó su correo
 
   services: [
     { id: "corte", cat: "barberia", name: "Corte caballero", price: 9000, min: 50, popular: true,

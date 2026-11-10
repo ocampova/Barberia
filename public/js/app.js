@@ -279,9 +279,13 @@
     const form = $("#details");
     const name = form.name.value.trim();
     const phone = form.phone.value.replace(/\D/g, "");
+    const email = form.email.value.trim();
+    const emailOk = !email || /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
     form.name.parentElement.classList.toggle("is-invalid", name.length < 2);
     form.phone.parentElement.classList.toggle("is-invalid", phone.length < 8);
+    form.email.parentElement.classList.toggle("is-invalid", !emailOk);
     if (name.length < 2 || phone.length < 8) { toast("Revisa tu nombre y teléfono"); return; }
+    if (!emailOk) { toast("Revisa tu correo"); return; }
 
     submitting = true;
     const next = $("#flow-next");
@@ -289,12 +293,12 @@
     try {
       const b = await api("/api/bookings", {
         method: "POST",
-        body: { services: state.cart, day: state.day, start: state.slot, name, phone,
+        body: { services: state.cart, day: state.day, start: state.slot, name, phone, email,
           note: form.note.value.trim(), website: form.website.value },
       });
       saveMine([...loadMine(), { id: b.id, token: b.token }]);
-      try { localStorage.setItem("va-cliente", JSON.stringify({ name, phone: form.phone.value })); } catch {}
-      showTicket(b, name);
+      try { localStorage.setItem("va-cliente", JSON.stringify({ name, phone: form.phone.value, email })); } catch {}
+      showTicket(b, name, email);
       state.cart = []; state.avail = null;
       form.note.value = "";
     } catch (e) {
@@ -304,7 +308,7 @@
     } finally { submitting = false; }
   }
 
-  function showTicket(a, fullName) {
+  function showTicket(a, fullName, email) {
     const svc = a.services.map((id) => byId(id).name).join(" + ");
     const msg = `Hola, soy ${fullName}. Acabo de reservar ${svc} para el ${longDate(a.day)} a las ${fmtTime(a.start)} (reserva ${a.id}).`;
     $("#ticket").innerHTML = `
@@ -314,6 +318,7 @@
       <p class="ticket__time">${fmtTime(a.start)}</p>
       <p class="ticket__date">${longDate(a.day)}</p>
       <p class="ticket__svc">${esc(svc)} · ${fmtMoney(a.total)}</p>
+      ${email ? `<p class="ticket__mail">Te enviamos los detalles a <strong>${esc(email)}</strong> y te avisaremos ahí cuando la barbería confirme.</p>` : ""}
       <div class="ticket__actions">
         <a class="btn btn--gold" target="_blank" rel="noopener"
            href="https://wa.me/${B.whatsapp}?text=${encodeURIComponent(msg)}">Avisar por WhatsApp</a>
@@ -391,7 +396,7 @@
     try {
       const c = JSON.parse(localStorage.getItem("va-cliente"));
       const f = $("#details");
-      if (c && !f.name.value) { f.name.value = c.name || ""; f.phone.value = c.phone || ""; }
+      if (c && !f.name.value) { f.name.value = c.name || ""; f.phone.value = c.phone || ""; f.email.value = c.email || ""; }
     } catch {}
   }
 
@@ -403,7 +408,17 @@
     try {
       const cfg = await api("/api/config");
       B = cfg; SERVICES = cfg.services; CATEGORIES = cfg.categories;
+      // Sin correo configurado en el servidor, no pedimos el correo.
+      $("#details").email.closest(".field").hidden = !cfg.emailEnabled;
       err.hidden = true;
+      // Enlace desde el correo: /?cita=ID&t=TOKEN → guardar la cita en este celular y mostrarla.
+      const qs = new URLSearchParams(location.search);
+      if (qs.get("cita") && qs.get("t")) {
+        const mine = loadMine();
+        if (!mine.some((m) => m.id === qs.get("cita"))) saveMine([...mine, { id: qs.get("cita"), token: qs.get("t") }]);
+        history.replaceState(null, "", location.pathname);
+        return go("appointments");
+      }
       go("home");
     } catch (e) {
       $("#boot-error p").textContent = e.message;

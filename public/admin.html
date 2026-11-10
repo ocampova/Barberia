@@ -36,7 +36,7 @@
 
       <!-- Pendientes -->
       <div class="view" data-view="pending">
-        <p class="adm-hint">Confirma o rechaza. Al hacerlo se abre WhatsApp con el mensaje listo para el cliente.</p>
+        <p class="adm-hint">Confirma o rechaza. El cliente recibe un correo; si no dejó correo, se abre WhatsApp con el mensaje listo.</p>
         <div class="list" id="pending-list"></div>
       </div>
 
@@ -90,6 +90,7 @@
         <div class="field"><span>Servicios</span><div class="adm-checks" id="new-services"></div></div>
         <label class="field"><span>Nombre</span><input name="name" maxlength="60" required /></label>
         <label class="field"><span>Teléfono (opcional)</span><input name="phone" type="tel" inputmode="numeric" /></label>
+        <label class="field" id="new-email"><span>Correo (opcional: le enviamos la confirmación)</span><input name="email" type="email" maxlength="120" /></label>
         <label class="field"><span>Nota (opcional)</span><input name="note" maxlength="200" /></label>
         <label class="adm-check"><input type="checkbox" name="force" /> Agendar aunque choque con otra cita</label>
         <button class="btn btn--gold btn--block">Guardar cita</button>

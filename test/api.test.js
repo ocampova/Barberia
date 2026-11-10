@@ -9,12 +9,14 @@ const { createApp } = require("../server/app");
 // Reloj fijo: lunes 9 de noviembre de 2026, 8:00 a.m. en Costa Rica (14:00 UTC).
 const clock = () => new Date("2026-11-09T14:00:00Z");
 
-async function setup(t, env = {}) {
+async function setup(t, env = {}, opts = {}) {
   const notices = [];
+  const mails = [];
   const handler = createApp({
-    repo: repo(openDb(":memory:")), config, clock,
-    env: { ADMIN_PIN: "246810", ADMIN_SECRET: "x".repeat(32), ...env },
+    repo: repo(openDb(":memory:")), config, clock: opts.clock || clock,
+    env: { ADMIN_PIN: "246810", ADMIN_SECRET: "x".repeat(32), PUBLIC_URL: "https://reservas.example.com", ...env },
     notify: (title, text) => notices.push({ title, text }),
+    mailer: { enabled: true, send: async (m) => { mails.push(m); return { id: "ok" }; } },
   });
   const server = http.createServer(handler);
   await new Promise((r) => server.listen(0, r));
@@ -27,7 +29,7 @@ async function setup(t, env = {}) {
     });
     return { status: res.status, body: await res.json().catch(() => null), headers: res.headers };
   };
-  return { call, notices, base };
+  return { call, notices, mails, base, handler };
 }
 
 const booking = (extra = {}) => ({ services: ["corte"], day: "2026-11-10", start: 600, name: "Juan Pérez", phone: "8888 1234", ...extra });
@@ -152,4 +154,70 @@ test("archivos estáticos y protección de rutas", async (t) => {
   assert.equal((await fetch(base + "/..%2fserver%2fconfig.js")).status, 403);
   assert.equal((await fetch(base + "/nada.js")).status, 404);
   assert.equal((await call("GET", "/api/nada")).status, 404);
+});
+
+test("correos: recibida, confirmada con .ics, cancelada por el cliente", async (t) => {
+  const { call, mails } = await setup(t);
+  const r = (await call("POST", "/api/bookings", booking({ email: "Cliente@Example.com" }))).body;
+  await new Promise((ok) => setImmediate(ok));
+  assert.equal(mails.length, 1);
+  assert.equal(mails[0].to, "cliente@example.com");
+  assert.match(mails[0].subject, /Recibimos tu solicitud/);
+  assert.match(mails[0].html, /Pendiente de confirmación/);
+  assert.match(mails[0].html, new RegExp(`https://reservas.example.com/\\?cita=${r.id}&amp;t=`));
+
+  const { token } = (await call("POST", "/api/admin/login", { pin: "246810" })).body;
+  const p = await call("PATCH", `/api/admin/bookings/${r.id}`, { status: "confirmada" }, token);
+  assert.equal(p.body.emailed, true);
+  await new Promise((ok) => setImmediate(ok));
+  assert.equal(mails.length, 2);
+  assert.match(mails[1].subject, /confirmada/);
+  assert.match(mails[1].html, /Víctor Aguilar/); // profesional
+  assert.match(mails[1].html, /Martes, 10 de noviembre de 2026/);
+  const icsText = Buffer.from(mails[1].attachments[0].content, "base64").toString();
+  assert.match(icsText, /DTSTART:20261110T160000Z/); // 10:00 a.m. Costa Rica = 16:00 UTC
+  assert.match(icsText, /DTEND:20261110T165000Z/);
+
+  // Volver a guardar el mismo estado no reenvía el correo
+  assert.equal((await call("PATCH", `/api/admin/bookings/${r.id}`, { status: "confirmada" }, token)).body.emailed, false);
+
+  await call("POST", `/api/bookings/${r.id}/cancel`, { token: r.token });
+  await new Promise((ok) => setImmediate(ok));
+  assert.equal(mails.length, 3);
+  assert.match(mails[2].html, /Cancelaste tu cita/);
+});
+
+test("correos: sin correo no se envía nada; correo inválido se rechaza", async (t) => {
+  const { call, mails } = await setup(t);
+  assert.equal((await call("POST", "/api/bookings", booking())).status, 201);
+  assert.equal((await call("POST", "/api/bookings", booking({ start: 660, email: "no-es-correo" }))).status, 400);
+  assert.equal((await call("POST", "/api/bookings", booking({ start: 660, email: "a@b.co<script>" }))).status, 400);
+  await new Promise((ok) => setImmediate(ok));
+  assert.equal(mails.length, 0);
+});
+
+test("correos: los datos del cliente se escapan en el HTML", async (t) => {
+  const { call, mails } = await setup(t);
+  await call("POST", "/api/bookings", booking({ name: "<b>Juan</b> Pérez", email: "j@example.com" }));
+  await new Promise((ok) => setImmediate(ok));
+  assert.ok(!mails[0].html.includes("<b>Juan</b>"));
+  assert.match(mails[0].html, /&lt;b&gt;Juan&lt;\/b&gt;/);
+});
+
+test("recordatorios: una sola vez, a citas confirmadas dentro de 24 horas", async (t) => {
+  // Lunes 9 de noviembre, 2:00 p.m. en Costa Rica
+  const { call, mails, handler } = await setup(t, {}, { clock: () => new Date("2026-11-09T20:00:00Z") });
+  const { token } = (await call("POST", "/api/admin/login", { pin: "246810" })).body;
+  const mk = async (day, start) => (await call("POST", "/api/admin/bookings",
+    { services: ["corte"], day, start, name: "Ana Mora", email: "ana@example.com" }, token)).body;
+  const soon = await mk("2026-11-10", 540);     // mañana 9:00 → en 19 h
+  await mk("2026-11-11", 540);                   // en 43 h → todavía no
+  await new Promise((ok) => setImmediate(ok));
+  const before = mails.length;                   // confirmaciones de las dos citas
+  assert.equal(before, 2);
+  assert.equal(handler.runReminders(), 1);
+  assert.equal(handler.runReminders(), 0);       // no se repite
+  await new Promise((ok) => setImmediate(ok));
+  assert.match(mails[before].subject, /Recordatorio/);
+  assert.match(mails[before].html, new RegExp(soon.id));
 });

@@ -38,6 +38,10 @@ function openDb(file) {
     );
     CREATE INDEX IF NOT EXISTS blocks_day ON blocks(day);
   `);
+  // Migraciones: columnas agregadas después de la primera versión.
+  const cols = db.prepare("PRAGMA table_info(bookings)").all().map((c) => c.name);
+  if (!cols.includes("email")) db.exec("ALTER TABLE bookings ADD COLUMN email TEXT NOT NULL DEFAULT ''");
+  if (!cols.includes("reminded_at")) db.exec("ALTER TABLE bookings ADD COLUMN reminded_at TEXT");
   return db;
 }
 
@@ -52,8 +56,11 @@ function repo(db) {
       "SELECT COUNT(*) AS n FROM bookings WHERE phone = ? AND day >= ? AND status IN ('pendiente','confirmada')"),
     pendingCount: db.prepare("SELECT COUNT(*) AS n FROM bookings WHERE status = 'pendiente' AND day >= ?"),
     insertBooking: db.prepare(`INSERT INTO bookings
-      (id, token, category, day, start, minutes, services, total, name, phone, note, status, source, created_at, updated_at)
-      VALUES (:id, :token, :category, :day, :start, :minutes, :services, :total, :name, :phone, :note, :status, :source, :created_at, :updated_at)`),
+      (id, token, category, day, start, minutes, services, total, name, phone, email, note, status, source, created_at, updated_at)
+      VALUES (:id, :token, :category, :day, :start, :minutes, :services, :total, :name, :phone, :email, :note, :status, :source, :created_at, :updated_at)`),
+    reminderCandidates: db.prepare(`SELECT * FROM bookings WHERE status = 'confirmada' AND email <> ''
+      AND reminded_at IS NULL AND day BETWEEN ? AND ?`),
+    setReminded: db.prepare("UPDATE bookings SET reminded_at = ? WHERE id = ?"),
     setStatus: db.prepare("UPDATE bookings SET status = ?, updated_at = ? WHERE id = ?"),
     blocksOn: db.prepare("SELECT * FROM blocks WHERE day = ?"),
     blocksRange: db.prepare("SELECT * FROM blocks WHERE day BETWEEN ? AND ? ORDER BY day, start"),
@@ -67,7 +74,9 @@ function repo(db) {
     bookingById: (id) => rowToBooking(q.bookingById.get(id)),
     activeByPhone: (phone, fromDay) => q.activeByPhone.get(phone, fromDay).n,
     pendingCount: (fromDay) => q.pendingCount.get(fromDay).n,
-    insertBooking: (b) => q.insertBooking.run({ ...b, services: JSON.stringify(b.services) }),
+    insertBooking: (b) => q.insertBooking.run({ email: "", ...b, services: JSON.stringify(b.services) }),
+    reminderCandidates: (from, to) => q.reminderCandidates.all(from, to).map(rowToBooking),
+    setReminded: (id) => q.setReminded.run(new Date().toISOString(), id).changes,
     setStatus: (id, status) => q.setStatus.run(status, new Date().toISOString(), id).changes,
     blocksOn: (day) => q.blocksOn.all(day),
     blocksRange: (from, to) => q.blocksRange.all(from, to),

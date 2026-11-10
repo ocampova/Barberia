@@ -25,9 +25,25 @@ Barbero (/admin)   ◄───────────┘   + aviso push opcion
 ```
 
 1. El cliente elige servicios, día y hora. El servidor solo ofrece horas realmente libres y vuelve a verificar al guardar, así que dos personas no pueden tomar el mismo espacio.
-2. La cita queda **pendiente** y al barbero le llega un aviso, si configuraste `NOTIFY_URL`.
-3. En `/admin` el barbero toca **Confirmar** o **Rechazar**. Se abre WhatsApp con el mensaje ya escrito para el cliente.
+2. La cita queda **pendiente**. Si el cliente dejó correo, le llega uno que dice "Recibimos tu solicitud", y al barbero le llega un aviso si configuraste `NOTIFY_URL`.
+3. En `/admin` el barbero toca **Confirmar** o **Rechazar**. Si el cliente dejó correo, el aviso le llega por ahí; si no, se abre WhatsApp con el mensaje ya escrito.
 4. En "Mis citas", el cliente ve el estado de su cita (pendiente, confirmada…) y puede cancelarla, lo que libera el espacio.
+
+### Correos al cliente
+
+Con un estilo parecido a los de Bewe, pero con la imagen negro y dorado de la marca. El correo es opcional para el cliente.
+
+| Cuándo | Correo |
+|---|---|
+| Al reservar | "Recibimos tu solicitud": pendiente de confirmación |
+| El barbero confirma | "Tu cita está confirmada", con la invitación `.ics` para agregarla al calendario |
+| Unas 24 h antes | Recordatorio, una sola vez, a las citas confirmadas |
+| El barbero rechaza o cancela | Aviso, con un botón para reservar otro horario |
+| El cliente cancela | Confirmación de la cancelación |
+
+Cada correo trae un botón **"Ver o cancelar mi cita"** que abre la cita en la app, aunque sea en otro celular.
+
+Se envían con [Resend](https://resend.com), cuyo plan gratis da 3000 correos al mes. Hay que configurar `RESEND_API_KEY`, `EMAIL_FROM` y `PUBLIC_URL` (ver `.env.example`). Para que los correos no caigan en spam, verifica en Resend el dominio desde el que se envían. Si falta la configuración, la app simplemente no pide el correo.
 
 ### Panel del barbero (`/admin`)
 
@@ -66,6 +82,7 @@ Las variables están explicadas en `.env.example`. Importante: haz copias de seg
 | `server/app.js` | La API: disponibilidad, reservas y panel |
 | `server/availability.js` | El cálculo de horas libres |
 | `server/db.js` | La base de datos SQLite |
+| `server/emails.js`, `server/mailer.js` | Las plantillas de correo y el envío con Resend |
 | `public/index.html`, `js/app.js` | La app del cliente |
 | `public/admin.html`, `js/admin.js` | El panel del barbero |
 | `test/` | Las pruebas automáticas |

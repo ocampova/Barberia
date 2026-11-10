@@ -4,6 +4,8 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const { freeSlots, ACTIVE } = require("./availability");
 const { isDay, addDays, nowIn, fmtTime } = require("./time");
+const { render: renderEmail } = require("./emails");
+const { createMailer } = require("./mailer");
 
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
 const MIME = {
@@ -31,13 +33,35 @@ function limiter(max, windowMs) {
   };
 }
 
-function createApp({ repo, config, env = process.env, clock = () => new Date(), notify }) {
+function createApp({ repo, config, env = process.env, clock = () => new Date(), notify, mailer }) {
   const services = new Map(config.services.map((s) => [s.id, s]));
   const secret = env.ADMIN_SECRET || crypto.randomBytes(32).toString("hex");
   const adminPin = env.ADMIN_PIN || "";
   const bookingLimit = limiter(Number(env.BOOKING_RATE_LIMIT || 8), 60 * 60 * 1000);
   const loginLimit = limiter(6, 15 * 60 * 1000);
   const send = notify || makeNotifier(env.NOTIFY_URL);
+  const mail = mailer || createMailer(env);
+  const publicUrl = (env.PUBLIC_URL || "").replace(/\/+$/, "");
+
+  function siteUrl(req) {
+    if (publicUrl) return publicUrl;
+    if (!req) return null;
+    const proto = (env.TRUST_PROXY && String(req.headers["x-forwarded-proto"] || "").split(",")[0]) || "http";
+    return req.headers.host ? `${proto}://${req.headers.host}` : null;
+  }
+
+  // Envía un correo al cliente sin hacer esperar la respuesta. Devuelve true si se intentó.
+  function emailClient(kind, b, req, extra = {}) {
+    if (!b.email) return false;
+    const site = siteUrl(req);
+    const link = site ? `${site}/?cita=${encodeURIComponent(b.id)}&t=${encodeURIComponent(b.token)}` : null;
+    let msg;
+    try { msg = renderEmail(kind, b, config, { link, siteUrl: site, ...extra }); }
+    catch (e) { console.error("Plantilla de correo:", e.message); return false; }
+    Promise.resolve(mail.send({ to: b.email, ...msg }))
+      .catch((e) => console.error(`No se pudo enviar el correo (${kind}) a la cita ${b.id}:`, e.message));
+    return mail.enabled !== false;
+  }
 
   const now = () => nowIn(config.timeZone, clock());
 
@@ -68,6 +92,13 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     if (p.length === 8) p = config.countryCode + p;
     if (p.length < 10 || p.length > 15) throw new HttpError(400, "Escribe un teléfono válido (8 dígitos).");
     return p;
+  }
+  function cleanEmail(v) {
+    const e = String(v ?? "").trim().toLowerCase();
+    if (!e) return "";
+    if (e.length > 120 || !/^[^\s@<>()",;]+@[^\s@<>()",;]+\.[a-z]{2,}$/.test(e))
+      throw new HttpError(400, "Revisa tu correo electrónico.");
+    return e;
   }
   function cleanText(v, max, field, required) {
     const s = String(v ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").trim();
@@ -111,7 +142,7 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
       slotStepMinutes, daysAhead, policies, categories, services: svc } = config;
     return { name, tagline, partner, slogan, location, mapsUrl, phone, whatsapp, currency, hours,
       slotStepMinutes, daysAhead, policies, categories: categories.map(({ id, name }) => ({ id, name })),
-      services: svc, today: now().day, nowMinutes: now().minutes };
+      services: svc, today: now().day, nowMinutes: now().minutes, emailEnabled: mail.enabled !== false };
   });
 
   // Resumen de varios días: cuántos espacios libres hay en cada uno.
@@ -128,12 +159,13 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     return { minutes, days: out };
   });
 
-  route("POST", "/api/bookings", ({ body, ip }) => {
+  route("POST", "/api/bookings", ({ body, ip, req }) => {
     if (!bookingLimit(ip)) throw new HttpError(429, "Demasiados intentos. Prueba de nuevo más tarde.");
     const { list, category, minutes, total } = resolveServices(body.services);
     parseSlot(body.day, body.start);
     const name = cleanText(body.name, 60, "nombre", true);
     const phone = cleanPhone(body.phone);
+    const email = cleanEmail(body.email);
     const note = cleanText(body.note, 200, "nota", false);
     if (body.website) throw new HttpError(400, "Solicitud inválida."); // campo trampa para bots
 
@@ -147,11 +179,12 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
         id: crypto.randomBytes(6).toString("base64url"),
         token: crypto.randomBytes(18).toString("base64url"),
         category, day: body.day, start: body.start, minutes, services: list.map((s) => s.id), total,
-        name, phone, note, status: "pendiente", source: "web", created_at: ts, updated_at: ts,
+        name, phone, email, note, status: "pendiente", source: "web", created_at: ts, updated_at: ts,
       };
       repo.insertBooking(b);
       return b;
     });
+    emailClient("recibida", booking, req);
 
     send(`Nueva reserva: ${name}`, `${list.map((s) => s.name).join(" + ")}\n${booking.day} · ${fmtTime(booking.start)}\nTel: ${phone}${note ? "\nNota: " + note : ""}`);
     return { status: 201, body: { ...publicBooking(booking), token: booking.token } };
@@ -167,12 +200,13 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
 
   route("GET", "/api/bookings/:id", ({ params, query }) => publicBooking(ownBooking(params.id, query.get("token"))));
 
-  route("POST", "/api/bookings/:id/cancel", ({ params, body }) => {
+  route("POST", "/api/bookings/:id/cancel", ({ params, body, req }) => {
     const b = ownBooking(params.id, body.token);
     const n = now();
     if (!ACTIVE.has(b.status)) throw new HttpError(409, "Esta cita ya no está activa.");
     if (b.day < n.day || (b.day === n.day && b.start <= n.minutes)) throw new HttpError(409, "Esta cita ya pasó.");
     repo.setStatus(b.id, "cancelada");
+    emailClient("cancelada", b, req, { byClient: true });
     send(`Cita cancelada: ${b.name}`, `${b.day} · ${fmtTime(b.start)} quedó libre.`);
     return publicBooking({ ...b, status: "cancelada" });
   });
@@ -185,7 +219,9 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     return { token: signToken() };
   });
 
-  route("GET", "/api/admin/summary", () => ({ pending: repo.pendingCount(now().day), today: now().day }), { admin: true });
+  route("GET", "/api/admin/summary", () => ({
+    pending: repo.pendingCount(now().day), today: now().day, emailEnabled: mail.enabled !== false,
+  }), { admin: true });
 
   route("GET", "/api/admin/bookings", ({ query }) => {
     const from = query.get("from") || now().day;
@@ -196,7 +232,7 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     return { bookings: list.map(({ token, ...b }) => b), blocks: repo.blocksRange(from, to) };
   }, { admin: true });
 
-  route("PATCH", "/api/admin/bookings/:id", ({ params, body }) => {
+  route("PATCH", "/api/admin/bookings/:id", ({ params, body, req }) => {
     if (!ADMIN_STATUSES.has(body.status)) throw new HttpError(400, "Estado inválido.");
     const b = repo.bookingById(params.id);
     if (!b) throw new HttpError(404, "Cita no encontrada.");
@@ -208,18 +244,22 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
       if (!free.includes(b.start)) throw new HttpError(409, "Ese espacio ya está ocupado.");
     }
     repo.setStatus(b.id, body.status);
+    const changed = b.status !== body.status;
+    const emailed = changed && ["confirmada", "rechazada", "cancelada"].includes(body.status)
+      ? emailClient(body.status, b, req) : false;
     const { token, ...rest } = b;
-    return { ...rest, status: body.status };
+    return { ...rest, status: body.status, emailed };
   }, { admin: true });
 
   // Cita creada por el barbero (llamada, cliente en el local).
-  route("POST", "/api/admin/bookings", ({ body }) => {
+  route("POST", "/api/admin/bookings", ({ body, req }) => {
     const { list, category, minutes, total } = resolveServices(body.services);
     parseSlot(body.day, body.start);
     const name = cleanText(body.name, 60, "nombre", true);
     const phone = body.phone ? cleanPhone(body.phone) : "";
+    const email = cleanEmail(body.email);
     const note = cleanText(body.note, 200, "nota", false);
-    return repo.transaction(() => {
+    const created = repo.transaction(() => {
       const free = freeSlots({ config, category, day: body.day, minutes, bookings: repo.bookingsOn(body.day),
         blocks: repo.blocksOn(body.day), now: null });
       if (!body.force && !free.includes(body.start)) throw new HttpError(409, "Ese espacio está ocupado o fuera de horario.");
@@ -227,12 +267,14 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
       const b = {
         id: crypto.randomBytes(6).toString("base64url"), token: crypto.randomBytes(18).toString("base64url"),
         category, day: body.day, start: body.start, minutes, services: list.map((s) => s.id), total,
-        name, phone, note, status: "confirmada", source: "panel", created_at: ts, updated_at: ts,
+        name, phone, email, note, status: "confirmada", source: "panel", created_at: ts, updated_at: ts,
       };
       repo.insertBooking(b);
-      const { token, ...rest } = b;
-      return { status: 201, body: rest };
+      return b;
     });
+    const emailed = emailClient("confirmada", created, req);
+    const { token, ...rest } = created;
+    return { status: 201, body: { ...rest, emailed } };
   }, { admin: true });
 
   route("POST", "/api/admin/blocks", ({ body }) => {
@@ -290,7 +332,31 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     });
   }
 
-  return async function handler(req, res) {
+  /* ---------- Recordatorios por correo ---------- */
+  // Se llama periódicamente desde index.js. Envía un recordatorio a las citas confirmadas
+  // que empiezan dentro de las próximas `reminderHoursBefore` horas (y en más de 1 hora).
+  function runReminders() {
+    if (mail.enabled === false) return 0;
+    const n = now();
+    const abs = (day, min) => Date.parse(day + "T00:00:00Z") / 60000 + min;
+    const nowAbs = abs(n.day, n.minutes);
+    const horizon = (config.reminderHoursBefore || 24) * 60;
+    let sent = 0;
+    for (const b of repo.reminderCandidates(n.day, addDays(n.day, 2))) {
+      const until = abs(b.day, b.start) - nowAbs;
+      if (until <= 60 || until > horizon) continue;
+      // Si se confirmó hace muy poco, el correo de confirmación ya sirve de recordatorio.
+      if (Date.now() - Date.parse(b.updated_at) < 3 * 3600e3 && until < 12 * 60) { repo.setReminded(b.id); continue; }
+      repo.setReminded(b.id);
+      if (emailClient("recordatorio", b, null)) sent++;
+    }
+    return sent;
+  }
+
+  handler.runReminders = runReminders;
+  return handler;
+
+  async function handler(req, res) {
     res.setHeader("x-content-type-options", "nosniff");
     res.setHeader("referrer-policy", "same-origin");
     res.setHeader("x-frame-options", "DENY");

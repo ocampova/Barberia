@@ -123,7 +123,7 @@
         <!-- Paso 3 -->
         <div class="pane" data-pane="3" hidden>
           <h2 class="pane__title">Tus datos</h2>
-          <p class="pane__sub">Sin cuentas ni contraseñas. Solo para confirmarte por WhatsApp.</p>
+          <p class="pane__sub">Sin cuentas ni contraseñas. Solo para confirmarte tu cita.</p>
           <form id="details" novalidate>
             <label class="field">
               <span>Nombre</span>
@@ -132,6 +132,10 @@
             <label class="field">
               <span>Teléfono</span>
               <input name="phone" type="tel" inputmode="numeric" autocomplete="tel" required placeholder="8888 8888" />
+            </label>
+            <label class="field">
+              <span>Correo (opcional)</span>
+              <input name="email" type="email" inputmode="email" autocomplete="email" maxlength="120" placeholder="Para enviarte la confirmación" />
             </label>
             <label class="field">
               <span>Nota (opcional)</span>
