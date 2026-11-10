@@ -91,6 +91,8 @@ function openDb(file) {
   if (!cols.includes("email")) db.exec("ALTER TABLE bookings ADD COLUMN email TEXT NOT NULL DEFAULT ''");
   if (!cols.includes("reminded_at")) db.exec("ALTER TABLE bookings ADD COLUMN reminded_at TEXT");
   if (!cols.includes("user_id")) db.exec("ALTER TABLE bookings ADD COLUMN user_id INTEGER");
+  const ucols = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
+  if (!ucols.includes("role")) db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'cliente'");
   db.exec("CREATE INDEX IF NOT EXISTS bookings_user ON bookings(user_id)");
   db.exec("PRAGMA foreign_keys = ON");
   return db;
@@ -121,6 +123,8 @@ function repo(db) {
     userByPhone: db.prepare("SELECT * FROM users WHERE phone = ?"),
     userUpdate: db.prepare("UPDATE users SET name = ?, phone = ?, email = ?, updated_at = ? WHERE id = ?"),
     userSetPass: db.prepare("UPDATE users SET pass_hash = ?, updated_at = ? WHERE id = ?"),
+    userSetRole: db.prepare("UPDATE users SET role = ?, updated_at = ? WHERE id = ?"),
+    admins: db.prepare("SELECT id, name, phone, email, created_at FROM users WHERE role = 'admin' ORDER BY name"),
     sessionInsert: db.prepare("INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)"),
     sessionGet: db.prepare("SELECT * FROM sessions WHERE token_hash = ? AND expires_at > ?"),
     sessionDelete: db.prepare("DELETE FROM sessions WHERE token_hash = ?"),
@@ -176,6 +180,8 @@ function repo(db) {
     userByPhone: (p) => q.userByPhone.get(p),
     userUpdate: (id, u) => q.userUpdate.run(u.name, u.phone, u.email, new Date().toISOString(), id),
     userSetPass: (id, h) => q.userSetPass.run(h, new Date().toISOString(), id),
+    userSetRole: (id, role) => q.userSetRole.run(role, new Date().toISOString(), id),
+    admins: () => q.admins.all(),
     sessionInsert: (h, uid, exp) => q.sessionInsert.run(h, uid, exp),
     sessionGet: (h) => q.sessionGet.get(h, Date.now()),
     sessionDelete: (h) => q.sessionDelete.run(h),

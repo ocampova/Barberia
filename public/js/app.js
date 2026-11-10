@@ -235,6 +235,7 @@
           <button class="btn btn--ghost btn--block">Cambiar contraseña</button>
         </form>
 
+        ${USER.admin ? `<a class="btn btn--gold btn--block" href="/admin">Ir al panel de la barbería</a>` : ""}
         <button class="btn btn--ghost btn--block logout" data-action="logout">Cerrar sesión</button>
       </div>`;
 
@@ -569,6 +570,7 @@
       const qs = new URLSearchParams(location.search);
       // Enlaces desde el correo: ?citas=1 (ver mis citas) y ?reset=TOKEN (nueva contraseña)
       if (qs.has("citas") || qs.has("cita")) { history.replaceState(null, "", location.pathname); return go("appointments"); }
+      if (qs.has("olvide")) { history.replaceState(null, "", location.pathname); go("home"); return openAuth("forgot"); }
       if (qs.get("reset")) {
         resetToken = qs.get("reset");
         history.replaceState(null, "", location.pathname);

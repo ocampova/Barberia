@@ -22,20 +22,30 @@
     <section id="login" class="login" hidden>
       <img class="login__logo" src="img/victor-aguilar.svg" width="120" height="120" alt="Víctor Aguilar Barbería" />
       <h1>Panel de la barbería</h1>
+      <p class="login__msg" id="login-msg" hidden></p>
       <form id="login-form">
         <label class="field">
-          <span>PIN</span>
-          <input name="pin" type="password" inputmode="numeric" autocomplete="current-password" required />
+          <span>Correo o teléfono</span>
+          <input name="login" autocomplete="username" required />
+        </label>
+        <label class="field">
+          <span>Contraseña</span>
+          <input name="password" type="password" autocomplete="current-password" required />
         </label>
         <button class="btn btn--gold btn--block">Entrar</button>
       </form>
+      <a class="link login__forgot" href="/?olvide=1">¿Olvidaste tu contraseña?</a>
     </section>
 
     <!-- PANEL -->
     <section id="panel" hidden>
       <header class="topbar adm-top">
         <h1>Panel</h1>
-        <button class="link" data-action="logout">Salir</button>
+        <div class="adm-top__actions">
+          <button class="link" data-action="team">Equipo</button>
+          <a class="link" href="/" title="Ver la app de clientes">App</a>
+          <button class="link" data-action="logout">Salir <span class="muted" id="me-name"></span></button>
+        </div>
       </header>
 
       <!-- Pendientes -->
@@ -188,6 +198,25 @@
         <button class="btn btn--ghost" data-action="svc-delete" id="se-delete">Borrar</button>
         <button class="btn btn--gold" data-action="svc-save">Guardar</button>
       </footer>
+    </div>
+
+    <!-- EQUIPO -->
+    <div class="flow" id="team" hidden role="dialog" aria-modal="true" aria-labelledby="team-title">
+      <header class="flow__head">
+        <span></span>
+        <strong id="team-title">Equipo</strong>
+        <button class="iconbtn" data-action="close-team" aria-label="Cerrar">×</button>
+      </header>
+      <div class="flow__body pane">
+        <p class="adm-hint">Estas cuentas pueden entrar al panel. Para agregar a alguien, primero debe crear su cuenta en la app.</p>
+        <div id="team-list"></div>
+        <form id="team-form" class="card-form" novalidate>
+          <h2>Dar acceso</h2>
+          <label class="field"><span>Correo o teléfono de su cuenta</span><input name="login" required /></label>
+          <button class="btn btn--gold btn--block">Agregar al equipo</button>
+        </form>
+        <p class="adm-hint">Para cambiar tu contraseña o tus datos, usa tu perfil en la <a class="link" href="/">app</a>.</p>
+      </div>
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>

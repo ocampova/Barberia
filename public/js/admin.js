@@ -1,11 +1,11 @@
 (() => {
   "use strict";
-  const TOKEN_KEY = "va-admin-token";
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
   let C; // configuración del negocio
+  let ME = null; // administrador con sesión
   let view = "pending";
   let agendaDay;
   let lastPending = null;
@@ -25,30 +25,70 @@
 
   /* ---------- API ---------- */
   async function api(path, opts = {}) {
-    const token = localStorage.getItem(TOKEN_KEY);
     const res = await fetch(path, {
       ...opts,
-      headers: { "content-type": "application/json", ...(token ? { authorization: "Bearer " + token } : {}) },
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
       body: opts.body ? JSON.stringify(opts.body) : undefined,
     });
     const data = await res.json().catch(() => ({}));
-    if (res.status === 401 && !path.endsWith("/login")) { logout(); throw new Error(data.error || "Sesión vencida"); }
+    if ((res.status === 401 || res.status === 403) && !path.startsWith("/api/auth/")) {
+      showLogin(res.status === 403 ? data.error : "Tu sesión terminó. Entra de nuevo.");
+      throw new Error(data.error || "Sesión vencida");
+    }
     if (!res.ok) throw new Error(data.error || "Error de conexión");
     return data;
   }
 
   /* ---------- Sesión ---------- */
-  function logout() {
-    localStorage.removeItem(TOKEN_KEY);
+  function showLogin(message) {
+    ME = null;
+    clearInterval(poll);
     $("#panel").hidden = true; $("#login").hidden = false;
+    $("#login-msg").textContent = message || "";
+    $("#login-msg").hidden = !message;
+  }
+  async function logout() {
+    try { await api("/api/auth/logout", { method: "POST" }); } catch {}
+    showLogin("");
   }
   $("#login-form").addEventListener("submit", async (e) => {
     e.preventDefault();
+    const f = e.target;
+    const btn = f.querySelector("button");
+    btn.disabled = true;
     try {
-      const { token } = await api("/api/admin/login", { method: "POST", body: { pin: e.target.pin.value } });
-      localStorage.setItem(TOKEN_KEY, token);
-      e.target.reset();
+      const { user } = await api("/api/auth/login", { method: "POST", body: { login: f.login.value, password: f.password.value } });
+      if (!user.admin) {
+        await api("/api/auth/logout", { method: "POST" }).catch(() => {});
+        return showLogin("Esta cuenta es de cliente y no tiene acceso al panel. Pide a un administrador que te agregue al equipo.");
+      }
+      f.reset();
       start();
+    } catch (err) { toast(err.message); }
+    finally { btn.disabled = false; }
+  });
+
+  /* ---------- Equipo ---------- */
+  async function openTeam() {
+    $("#team").hidden = false;
+    renderTeam();
+  }
+  async function renderTeam() {
+    try {
+      const { admins } = await api("/api/admin/team");
+      $("#team-list").innerHTML = admins.map((a) => `<div class="team-row">
+          <div><strong>${esc(a.name)}${a.id === ME.id ? ' <span class="tag tag--gold">Tú</span>' : ""}</strong>
+            <small>${esc(a.email)}</small></div>
+          ${a.id === ME.id ? "" : `<button class="btn btn--ghost adm-small" data-team-remove="${a.id}" data-team-name="${esc(a.name)}">Quitar</button>`}
+        </div>`).join("");
+    } catch (err) { toast(err.message); }
+  }
+  $("#team-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await api("/api/admin/team", { method: "POST", body: { login: e.target.login.value } });
+      e.target.reset(); toast("Acceso al panel otorgado"); renderTeam();
     } catch (err) { toast(err.message); }
   });
 
@@ -202,6 +242,8 @@
     }
     switch (ds.action) {
       case "logout": return logout();
+      case "team": return openTeam();
+      case "close-team": $("#team").hidden = true; return;
       case "new-booking": return openNew();
       case "close-new": $("#new-booking").hidden = true; return;
       case "cal-prev": calMonth = shiftMonth(calMonth, -1); return renderSchedule();
@@ -225,6 +267,12 @@
     }
     if (ds.schcat) { schCategory = ds.schcat; selected.clear(); return renderSchedule(); }
     if (ds.svcEdit) return openSvcEditor(ds.svcEdit);
+    if (ds.teamRemove) {
+      if (!confirm(`¿Quitarle el acceso al panel a ${ds.teamName}? Su cuenta de cliente sigue activa.`)) return;
+      try { await api(`/api/admin/team/${ds.teamRemove}`, { method: "DELETE" }); toast("Acceso quitado"); renderTeam(); }
+      catch (err) { toast(err.message); }
+      return;
+    }
     if (ds.svcMove) return moveSvc(ds.svcId, Number(ds.svcMove));
   });
 
@@ -508,8 +556,13 @@
 
   let poll;
   async function start() {
+    try {
+      const [cfg, me] = await Promise.all([api("/api/config"), api("/api/me")]);
+      if (!me.user || !me.user.admin) return showLogin(me.user ? "Esta cuenta no tiene acceso al panel." : "");
+      C = cfg; ME = me.user;
+    } catch (e) { return toast(e.message); }
     $("#login").hidden = true; $("#panel").hidden = false;
-    try { C = await api("/api/config"); } catch (e) { return toast(e.message); }
+    $("#me-name").textContent = ME.name.split(" ")[0];
     if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().catch(() => {});
     await refreshBadge();
     go(view);
@@ -517,5 +570,5 @@
     poll = setInterval(refreshBadge, 30000);
   }
 
-  if (localStorage.getItem(TOKEN_KEY)) start(); else logout();
+  start();
 })();

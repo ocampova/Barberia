@@ -45,10 +45,7 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
   const toPublicService = (s) => ({ id: s.id, cat: s.category, name: s.name, price: s.price, min: s.minutes,
     desc: s.description, popular: s.popular });
   const configForEmail = () => ({ ...config, services: repo.services().map(toPublicService) });
-  const secret = env.ADMIN_SECRET || crypto.randomBytes(32).toString("hex");
-  const adminPin = env.ADMIN_PIN || "";
   const bookingLimit = limiter(Number(env.BOOKING_RATE_LIMIT || 8), 60 * 60 * 1000);
-  const loginLimit = limiter(6, 15 * 60 * 1000);
   const userLoginLimit = limiter(Number(env.LOGIN_RATE_LIMIT || 10), 15 * 60 * 1000);
   const registerLimit = limiter(Number(env.REGISTER_RATE_LIMIT || 6), 60 * 60 * 1000);
   const SESSION_DAYS = 60;
@@ -161,7 +158,13 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     if (!u) throw new HttpError(401, "Inicia sesión para continuar.");
     return u;
   }
-  const publicUser = (u) => ({ id: u.id, name: u.name, phone: u.phone, email: u.email, since: u.created_at });
+  const publicUser = (u) => ({ id: u.id, name: u.name, phone: u.phone, email: u.email, since: u.created_at, admin: u.role === "admin" });
+  function requireAdmin(req) {
+    const u = currentUser(req);
+    if (!u) throw new HttpError(401, "Inicia sesión para continuar.");
+    if (u.role !== "admin") throw new HttpError(403, "Esta cuenta no tiene acceso al panel.");
+    return u;
+  }
 
   function cleanPassword(v) {
     const p = String(v ?? "");
@@ -200,24 +203,31 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     if (!Number.isInteger(start) || start < 0 || start >= 1440) throw new HttpError(400, "Hora inválida.");
   }
 
-  /* ---------- Autenticación del panel ---------- */
-  function signToken(hours = 12) {
-    const exp = Date.now() + hours * 3600e3;
-    const mac = crypto.createHmac("sha256", secret).update(String(exp)).digest("base64url");
-    return `${exp}.${mac}`;
+  /* ---------- Primer administrador ---------- */
+  // Con ADMIN_EMAIL y ADMIN_PASSWORD, al arrancar se crea esa cuenta de administrador si no existe.
+  // Nunca se promueve una cuenta que ya existía: alguien pudo registrarla antes con ese correo.
+  if (env.ADMIN_EMAIL) {
+    const email = String(env.ADMIN_EMAIL).trim().toLowerCase();
+    const existing = repo.userByEmail(email);
+    if (existing && existing.role !== "admin") {
+      console.warn(`⚠  ${email} ya tiene una cuenta de cliente: no se convirtió en administrador. ` +
+        "Dale acceso desde el panel (Equipo) con otra cuenta de administrador o con: npm run admin -- " + email);
+    } else if (!existing) {
+      if (!env.ADMIN_PASSWORD || String(env.ADMIN_PASSWORD).length < 8) {
+        console.warn("⚠  ADMIN_EMAIL sin ADMIN_PASSWORD (mínimo 8 caracteres): no se creó el administrador.");
+      } else {
+        const id = repo.userInsert({ name: env.ADMIN_NAME || config.name, phone: cleanPhoneRaw(env.ADMIN_PHONE),
+          email, pass_hash: hashPassword(String(env.ADMIN_PASSWORD)) });
+        repo.userSetRole(id, "admin");
+        console.log(`Administrador creado: ${email}. Cambia la contraseña desde el perfil después de entrar.`);
+      }
+    }
   }
-  function checkToken(req) {
-    const m = /^Bearer (\d+)\.([\w-]+)$/.exec(req.headers.authorization || "");
-    if (!m || Number(m[1]) < Date.now()) return false;
-    const want = crypto.createHmac("sha256", secret).update(m[1]).digest();
-    const got = Buffer.from(m[2], "base64url");
-    return got.length === want.length && crypto.timingSafeEqual(got, want);
+  function cleanPhoneRaw(v) {
+    let p = String(v || "").replace(/\D/g, "");
+    if (p.length === 8) p = config.countryCode + p;
+    return p.length >= 10 && p.length <= 15 ? p : "";
   }
-  const sameSecret = (a, b) => {
-    const ha = crypto.createHash("sha256").update(a).digest();
-    const hb = crypto.createHash("sha256").update(b).digest();
-    return crypto.timingSafeEqual(ha, hb);
-  };
 
   /* ---------- Rutas ---------- */
   const routes = [];
@@ -395,12 +405,30 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
   });
 
   /* ---------- Panel ---------- */
-  route("POST", "/api/admin/login", ({ body, ip }) => {
-    if (!adminPin) throw new HttpError(503, "Panel desactivado: falta configurar ADMIN_PIN.");
-    if (!loginLimit(ip)) throw new HttpError(429, "Demasiados intentos. Espera 15 minutos.");
-    if (!sameSecret(String(body.pin || ""), adminPin)) throw new HttpError(401, "PIN incorrecto.");
-    return { token: signToken() };
-  });
+  // Equipo: cuentas con acceso al panel.
+  route("GET", "/api/admin/team", () => ({ admins: repo.admins() }), { admin: true });
+
+  route("POST", "/api/admin/team", ({ body }) => {
+    const raw = String(body.login || "").trim();
+    let key = raw.toLowerCase();
+    if (!raw.includes("@")) key = cleanPhoneRaw(raw);
+    const u = key ? repo.userByLogin(key) : null;
+    if (!u) throw new HttpError(404, "No hay ninguna cuenta con ese correo o teléfono. La persona debe crear su cuenta primero en la app.");
+    if (u.role === "admin") throw new HttpError(409, `${u.name} ya tiene acceso al panel.`);
+    repo.userSetRole(u.id, "admin");
+    return { status: 201, body: { admins: repo.admins() } };
+  }, { admin: true });
+
+  route("DELETE", "/api/admin/team/:id", ({ params, req }) => {
+    const me = requireAdmin(req);
+    const id = Number(params.id);
+    if (id === me.id) throw new HttpError(409, "No puedes quitarte el acceso a ti mismo.");
+    const u = repo.userById(id);
+    if (!u || u.role !== "admin") throw new HttpError(404, "Esa cuenta no es administradora.");
+    repo.userSetRole(id, "cliente");
+    repo.sessionDeleteOthers(id, ""); // cierra sus sesiones abiertas
+    return { admins: repo.admins() };
+  }, { admin: true });
 
   route("GET", "/api/admin/summary", () => ({
     pending: repo.pendingCount(now().day), today: now().day, emailEnabled: mail.enabled !== false,
@@ -686,7 +714,7 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     try {
       const r = routes.find((x) => x.method === req.method && x.re.test(url.pathname));
       if (!r) throw new HttpError(404, "Ruta no encontrada.");
-      if (r.admin && !checkToken(req)) throw new HttpError(401, "Inicia sesión de nuevo.");
+      if (r.admin) requireAdmin(req);
       const params = r.re.exec(url.pathname).groups || {};
       // Las escrituras deben enviar JSON: un formulario de otro sitio no puede hacerlo sin permiso (CSRF).
       if (["POST", "PUT", "PATCH"].includes(req.method) &&

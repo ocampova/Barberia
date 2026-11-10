@@ -8,9 +8,8 @@ const { createApp } = require("./app");
 const PORT = Number(process.env.PORT || 8080);
 const DB_FILE = process.env.DB_FILE || path.join(__dirname, "..", "data", "barberia.db");
 
-if (!process.env.ADMIN_PIN) console.warn("⚠  ADMIN_PIN no está configurado: el panel /admin queda desactivado.");
-else if (process.env.ADMIN_PIN.length < 6) console.warn("⚠  ADMIN_PIN es corto: usa al menos 6 caracteres.");
-if (!process.env.ADMIN_SECRET) console.warn("⚠  Sin ADMIN_SECRET: las sesiones del panel se cierran al reiniciar.");
+if (process.env.ADMIN_PIN || process.env.ADMIN_SECRET)
+  console.warn("⚠  ADMIN_PIN y ADMIN_SECRET ya no se usan: el panel se entra con una cuenta de administrador (ADMIN_EMAIL).");
 
 if (!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM)
   console.warn("⚠  Correos desactivados: configura RESEND_API_KEY y EMAIL_FROM para enviar confirmaciones.");

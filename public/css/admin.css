@@ -119,3 +119,13 @@
 .tag--gold { background: rgba(201,162,39,.15); color: var(--gold-2); }
 .field textarea { width: 100%; padding: 14px 16px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); color: var(--text); font: inherit; resize: none; }
 .ico--bell { --i: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linejoin='round' stroke-linecap='round'%3E%3Cpath d='M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z'/%3E%3Cpath d='M10 20.5a2 2 0 0 0 4 0'/%3E%3C/svg%3E"); }
+
+/* ---------- Sesión y equipo ---------- */
+.login__msg { margin: 0; padding: 12px 14px; border-radius: 12px; background: rgba(224,122,106,.12); color: var(--danger); font-size: 14px; text-align: left; }
+.login__forgot { justify-self: center; }
+.adm-top__actions { display: flex; gap: 16px; align-items: center; }
+.adm-top__actions .muted { color: var(--muted); font-weight: 400; }
+.team-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.team-row strong { display: block; }
+.team-row small { color: var(--muted); font-size: 13px; word-break: break-all; }
+#team .card-form { margin: 18px 0 8px; }

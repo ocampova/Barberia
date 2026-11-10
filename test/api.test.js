@@ -15,7 +15,7 @@ async function setup(t, env = {}, opts = {}) {
   const mails = [];
   const handler = createApp({
     repo: repo(openDb(":memory:")), config, clock: opts.clock || clock,
-    env: { ADMIN_PIN: "246810", ADMIN_SECRET: "x".repeat(32), PUBLIC_URL: "https://reservas.example.com",
+    env: { ADMIN_EMAIL: "jefe@example.com", ADMIN_PASSWORD: "clave-del-jefe", PUBLIC_URL: "https://reservas.example.com",
       REGISTER_RATE_LIMIT: "100", LOGIN_RATE_LIMIT: "100", ...env },
     notify: (title, text) => notices.push({ title, text }),
     mailer: opts.mailer || { enabled: true, send: async (m) => { mails.push(m); return { id: "ok" }; } },
@@ -28,11 +28,10 @@ async function setup(t, env = {}, opts = {}) {
   // Cada "navegador" guarda su propia cookie de sesión.
   function browser() {
     let cookie = "";
-    const call = async (method, path, body, token) => {
+    const call = async (method, path, body) => {
       const res = await fetch(base + path, {
         method, body: body ? JSON.stringify(body) : undefined,
-        headers: { "content-type": "application/json", ...(cookie ? { cookie } : {}),
-          ...(token ? { authorization: "Bearer " + token } : {}) },
+        headers: { "content-type": "application/json", ...(cookie ? { cookie } : {}) },
       });
       const set = res.headers.get("set-cookie");
       if (set) cookie = set.split(";")[0].endsWith("=") ? "" : set.split(";")[0];
@@ -53,7 +52,14 @@ async function setup(t, env = {}, opts = {}) {
     c.user = r.body.user;
     return c;
   }
-  const admin = async () => (await call("POST", "/api/admin/login", { pin: "246810" })).body.token;
+  // "Navegador" con la sesión del administrador creado por ADMIN_EMAIL / ADMIN_PASSWORD.
+  async function admin() {
+    const a = browser();
+    const r = await a("POST", "/api/auth/login", { login: "jefe@example.com", password: "clave-del-jefe" });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.user.admin, true);
+    return a;
+  }
   return { call, browser, user, admin, notices, mails, base, handler };
 }
 
@@ -224,75 +230,117 @@ test("límites: intentos por hora y citas activas por cliente", async (t) => {
 
 /* ---------------- Panel ---------------- */
 
-test("panel: requiere PIN y gestiona citas y bloqueos", async (t) => {
+test("panel: requiere cuenta de administrador y gestiona citas y bloqueos", async (t) => {
   const { call, user, admin } = await setup(t);
   assert.equal((await call("GET", "/api/admin/bookings")).status, 401);
-  assert.equal((await call("POST", "/api/admin/login", { pin: "000000" })).status, 401);
-  const token = await admin();
-  assert.ok(token);
-  assert.equal((await call("GET", "/api/admin/bookings", null, token + "x")).status, 401);
+  // Un cliente con sesión no puede entrar al panel
+  const cliente = await user();
+  assert.equal((await cliente("GET", "/api/admin/bookings")).status, 403);
+  assert.equal((await cliente("GET", "/api/me")).body.user.admin, false);
+  const adm = await admin();
 
   const c = await user();
   const r = (await c("POST", "/api/bookings", booking())).body;
-  assert.equal((await call("GET", "/api/admin/summary", null, token)).body.pending, 1);
+  assert.equal((await adm("GET", "/api/admin/summary")).body.pending, 1);
 
-  const list = await call("GET", "/api/admin/bookings?from=2026-11-10&to=2026-11-10", null, token);
+  const list = await adm("GET", "/api/admin/bookings?from=2026-11-10&to=2026-11-10");
   assert.equal(list.body.bookings[0].phone, c.user.phone);
   assert.equal(list.body.bookings[0].name, "Juan Pérez");
   assert.equal(list.body.bookings[0].token, undefined);
 
-  const p = await call("PATCH", `/api/admin/bookings/${r.id}`, { status: "confirmada" }, token);
+  const p = await adm("PATCH", `/api/admin/bookings/${r.id}`, { status: "confirmada" });
   assert.equal(p.body.status, "confirmada");
   assert.equal((await c("GET", "/api/me/bookings")).body.bookings[0].status, "confirmada");
-  assert.equal((await call("PATCH", `/api/admin/bookings/${r.id}`, { status: "x" }, token)).status, 400);
+  assert.equal((await adm("PATCH", `/api/admin/bookings/${r.id}`, { status: "x" })).status, 400);
 
-  const blk = await call("POST", "/api/admin/blocks", { day: "2026-11-10", start: 720, end: 780, reason: "Almuerzo" }, token);
+  const blk = await adm("POST", "/api/admin/blocks", { day: "2026-11-10", start: 720, end: 780, reason: "Almuerzo" });
   assert.equal(blk.status, 201);
   let a = await call("GET", "/api/availability?services=corte&from=2026-11-10&days=1");
   assert.ok(!a.body.days[0].slots.includes(720));
-  await call("DELETE", `/api/admin/blocks/${blk.body.id}`, null, token);
+  await adm("DELETE", `/api/admin/blocks/${blk.body.id}`);
   a = await call("GET", "/api/availability?services=corte&from=2026-11-10&days=1");
   assert.ok(a.body.days[0].slots.includes(720));
 
   // Cita del panel (cliente sin cuenta): confirmada de una vez; choca → 409 salvo force
-  const w = await call("POST", "/api/admin/bookings", { services: ["barba"], day: "2026-11-10", start: 600, name: "Cliente local" }, token);
+  const w = await adm("POST", "/api/admin/bookings", { services: ["barba"], day: "2026-11-10", start: 600, name: "Cliente local" });
   assert.equal(w.status, 409);
-  const w2 = await call("POST", "/api/admin/bookings", { services: ["barba"], day: "2026-11-10", start: 600, name: "Cliente local", force: true }, token);
+  const w2 = await adm("POST", "/api/admin/bookings", { services: ["barba"], day: "2026-11-10", start: 600, name: "Cliente local", force: true });
   assert.equal(w2.status, 201);
   assert.equal(w2.body.status, "confirmada");
 });
 
-test("panel desactivado sin ADMIN_PIN; login con límite de intentos", async (t) => {
-  const off = await setup(t, { ADMIN_PIN: "" });
-  assert.equal((await off.call("POST", "/api/admin/login", { pin: "" })).status, 503);
-  const { call } = await setup(t);
+test("primer administrador: se crea con ADMIN_EMAIL, nunca promueve una cuenta existente", async (t) => {
+  // Sin ADMIN_EMAIL no hay administradores
+  const none = await setup(t, { ADMIN_EMAIL: "" });
+  assert.equal((await none.call("POST", "/api/auth/login", { login: "jefe@example.com", password: "clave-del-jefe" })).status, 401);
+
+  // Contraseña corta: no se crea
+  const weak = await setup(t, { ADMIN_PASSWORD: "123" });
+  assert.equal((await weak.call("POST", "/api/auth/login", { login: "jefe@example.com", password: "123" })).status, 401);
+
+  // Una cuenta de cliente existente con ese correo no se convierte en admin al arrancar
+  const { openDb, repo: mkRepo } = require("../server/db");
+  const shared = mkRepo(openDb(":memory:"));
+  shared.userInsert({ name: "Intruso", phone: "50680000000", email: "jefe@example.com", pass_hash: "x" });
+  createApp({ repo: shared, config, clock, env: { ADMIN_EMAIL: "jefe@example.com", ADMIN_PASSWORD: "clave-del-jefe" }, mailer: { enabled: false, send() {} } });
+  assert.equal(shared.userByEmail("jefe@example.com").role, "cliente");
+});
+
+test("límite de intentos de inicio de sesión", async (t) => {
+  const { browser } = await setup(t, { LOGIN_RATE_LIMIT: "5" });
+  const c = browser();
   let last;
-  for (let i = 0; i < 7; i++) last = await call("POST", "/api/admin/login", { pin: "nope" + i });
+  for (let i = 0; i < 6; i++) last = await c("POST", "/api/auth/login", { login: "jefe@example.com", password: "mala" + i });
   assert.equal(last.status, 429);
+});
+
+test("equipo: dar y quitar acceso al panel", async (t) => {
+  const { user, admin, browser } = await setup(t);
+  const adm = await admin();
+  const ana = await user({ name: "Ana Salón", phone: "87776655", email: "ana@example.com" });
+  assert.equal((await ana("GET", "/api/admin/team")).status, 403);
+
+  assert.equal((await adm("POST", "/api/admin/team", { login: "nadie@example.com" })).status, 404);
+  const r = await adm("POST", "/api/admin/team", { login: "8777 6655" });
+  assert.equal(r.status, 201);
+  assert.deepEqual(r.body.admins.map((a) => a.email).sort(), ["ana@example.com", "jefe@example.com"]);
+  assert.equal((await adm("POST", "/api/admin/team", { login: "ana@example.com" })).status, 409);
+  assert.equal((await ana("GET", "/api/admin/summary")).status, 200); // ya entra al panel
+
+  // No puede quitarse el acceso a sí mismo
+  const me = (await adm("GET", "/api/me")).body.user;
+  assert.equal((await adm("DELETE", `/api/admin/team/${me.id}`)).status, 409);
+  // Quitarle el acceso a Ana cierra sus sesiones
+  const del = await adm("DELETE", `/api/admin/team/${ana.user.id}`);
+  assert.deepEqual(del.body.admins.map((a) => a.email), ["jefe@example.com"]);
+  assert.equal((await ana("GET", "/api/admin/summary")).status, 401);
+  const again = browser();
+  await again("POST", "/api/auth/login", { login: "ana@example.com", password: "secreto123" });
+  assert.equal((await again("GET", "/api/admin/summary")).status, 403);
 });
 
 /* ---------------- Servicios administrables ---------------- */
 
 test("servicios: crear, editar duración y precio, ocultar, ordenar, borrar", async (t) => {
   const { call, user, admin } = await setup(t);
-  const token = await admin();
+  const adm = await admin();
   assert.equal((await call("GET", "/api/admin/services")).status, 401);
 
   // Crear
-  const nuevo = await call("POST", "/api/admin/services",
-    { category: "barberia", name: "Diseño de cejas", minutes: 20, price: 3000, description: "Perfilado a navaja", popular: true }, token);
+  const nuevo = await adm("POST", "/api/admin/services",
+    { category: "barberia", name: "Diseño de cejas", minutes: 20, price: 3000, description: "Perfilado a navaja", popular: true });
   assert.equal(nuevo.status, 201);
   assert.equal(nuevo.body.id, "diseno-de-cejas");
   let cfg = (await call("GET", "/api/config")).body;
   assert.ok(cfg.services.some((s) => s.id === "diseno-de-cejas" && s.min === 20 && s.price === 3000 && s.popular));
 
   // Validaciones
-  assert.equal((await call("POST", "/api/admin/services", { category: "barberia", name: "X", minutes: 7 }, token)).status, 400);
-  assert.equal((await call("POST", "/api/admin/services", { category: "nope", name: "Algo", minutes: 30 }, token)).status, 400);
-  assert.equal((await call("POST", "/api/admin/services", { category: "barberia", name: "Algo", minutes: 30, price: -5 }, token)).status, 400);
+  assert.equal((await adm("POST", "/api/admin/services", { category: "barberia", name: "X", minutes: 7 })).status, 400);
+  assert.equal((await adm("POST", "/api/admin/services", { category: "nope", name: "Algo", minutes: 30 })).status, 400);
+  assert.equal((await adm("POST", "/api/admin/services", { category: "barberia", name: "Algo", minutes: 30, price: -5 })).status, 400);
 
   // Cambiar la duración del corte: la disponibilidad usa la nueva duración
-  await call("PUT", "/api/admin/services/corte", { category: "barberia", name: "Corte caballero", minutes: 30, price: 10000, description: "" }, token);
+  await adm("PUT", "/api/admin/services/corte", { category: "barberia", name: "Corte caballero", minutes: 30, price: 10000, description: "" });
   const a = (await call("GET", "/api/availability?services=corte&from=2026-11-10&days=1")).body;
   assert.equal(a.minutes, 30);
   assert.equal(a.days[0].slots.at(-1), 1140 - 30);
@@ -302,26 +350,26 @@ test("servicios: crear, editar duración y precio, ocultar, ordenar, borrar", as
   const b = (await c("POST", "/api/bookings", booking())).body;
   assert.equal(b.minutes, 30);
   assert.equal(b.total, 10000);
-  await call("PUT", "/api/admin/services/corte", { category: "barberia", name: "Corte caballero", minutes: 60, price: 12000 }, token);
+  await adm("PUT", "/api/admin/services/corte", { category: "barberia", name: "Corte caballero", minutes: 60, price: 12000 });
   assert.equal((await c("GET", "/api/me/bookings")).body.bookings[0].total, 10000);
 
   // No se puede borrar un servicio con citas, pero sí ocultarlo
-  assert.equal((await call("DELETE", "/api/admin/services/corte", null, token)).status, 409);
-  await call("PUT", "/api/admin/services/corte", { category: "barberia", name: "Corte caballero", minutes: 60, price: 12000, active: false }, token);
+  assert.equal((await adm("DELETE", "/api/admin/services/corte")).status, 409);
+  await adm("PUT", "/api/admin/services/corte", { category: "barberia", name: "Corte caballero", minutes: 60, price: 12000, active: false });
   cfg = (await call("GET", "/api/config")).body;
   assert.ok(!cfg.services.some((s) => s.id === "corte"));
   assert.deepEqual(cfg.retired, [{ id: "corte", name: "Corte caballero" }]);
   assert.equal((await c("POST", "/api/bookings", booking({ start: 780 }))).status, 400); // ya no se puede reservar
 
   // Borrar uno sin citas
-  assert.equal((await call("DELETE", "/api/admin/services/diseno-de-cejas", null, token)).status, 200);
+  assert.equal((await adm("DELETE", "/api/admin/services/diseno-de-cejas")).status, 200);
 
   // Ordenar
-  const all = (await call("GET", "/api/admin/services", null, token)).body.services.map((s) => s.id);
+  const all = (await adm("GET", "/api/admin/services")).body.services.map((s) => s.id);
   const reversed = [...all].reverse();
-  const o = await call("PUT", "/api/admin/services-order", { ids: reversed }, token);
+  const o = await adm("PUT", "/api/admin/services-order", { ids: reversed });
   assert.deepEqual(o.body.services.map((s) => s.id), reversed);
-  assert.equal((await call("PUT", "/api/admin/services-order", { ids: reversed.slice(1) }, token)).status, 400);
+  assert.equal((await adm("PUT", "/api/admin/services-order", { ids: reversed.slice(1) })).status, 400);
 });
 
 /* ---------------- Archivos ---------------- */
@@ -355,8 +403,8 @@ test("correos: recibida, confirmada con .ics, cancelada por el cliente", async (
   assert.match(mails[0].html, /Pendiente de confirmación/);
   assert.match(mails[0].html, /https:\/\/reservas.example.com\/\?citas=1/);
 
-  const token = await admin();
-  const p = await call("PATCH", `/api/admin/bookings/${r.id}`, { status: "confirmada" }, token);
+  const adm = await admin();
+  const p = await adm("PATCH", `/api/admin/bookings/${r.id}`, { status: "confirmada" });
   assert.equal(p.body.emailed, true);
   await tick();
   assert.equal(mails.length, 2);
@@ -367,7 +415,7 @@ test("correos: recibida, confirmada con .ics, cancelada por el cliente", async (
   assert.match(icsText, /DTSTART:20261110T160000Z/);
   assert.match(icsText, /DTEND:20261110T165000Z/);
 
-  assert.equal((await call("PATCH", `/api/admin/bookings/${r.id}`, { status: "confirmada" }, token)).body.emailed, false);
+  assert.equal((await adm("PATCH", `/api/admin/bookings/${r.id}`, { status: "confirmada" })).body.emailed, false);
 
   await c("POST", `/api/bookings/${r.id}/cancel`);
   await tick();
@@ -386,9 +434,9 @@ test("correos: los datos del cliente se escapan en el HTML", async (t) => {
 
 test("recordatorios: una sola vez, a citas confirmadas dentro de 24 horas", async (t) => {
   const { call, mails, handler, admin } = await setup(t, {}, { clock: () => new Date("2026-11-09T20:00:00Z") });
-  const token = await admin();
-  const mk = async (day, start) => (await call("POST", "/api/admin/bookings",
-    { services: ["corte"], day, start, name: "Ana Mora", email: "ana@example.com" }, token)).body;
+  const adm = await admin();
+  const mk = async (day, start) => (await adm("POST", "/api/admin/bookings",
+    { services: ["corte"], day, start, name: "Ana Mora", email: "ana@example.com" })).body;
   const soon = await mk("2026-11-10", 540);
   await mk("2026-11-11", 540);
   await tick();
@@ -406,11 +454,11 @@ test("recordatorios: una sola vez, a citas confirmadas dentro de 24 horas", asyn
 
 test("horario: abrir un domingo, cerrar un día, volver al semanal", async (t) => {
   const { call, user, admin } = await setup(t);
-  const token = await admin();
+  const adm = await admin();
   const avail = async (day) => (await call("GET", `/api/availability?services=corte&from=${day}&days=1`)).body.days[0];
 
   assert.equal((await avail("2026-11-15")).open, false);
-  let r = await call("PUT", "/api/admin/schedule/days", { category: "barberia", days: ["2026-11-15"], ranges: [[600, 780]] }, token);
+  let r = await adm("PUT", "/api/admin/schedule/days", { category: "barberia", days: ["2026-11-15"], ranges: [[600, 780]] });
   assert.equal(r.status, 200);
   const sun = await avail("2026-11-15");
   assert.equal(sun.open, true);
@@ -419,7 +467,7 @@ test("horario: abrir un domingo, cerrar un día, volver al semanal", async (t) =
 
   const c = await user();
   const b = (await c("POST", "/api/bookings", booking())).body;
-  r = await call("PUT", "/api/admin/schedule/days", { category: "barberia", days: ["2026-11-10", "2026-11-11"], ranges: [] }, token);
+  r = await adm("PUT", "/api/admin/schedule/days", { category: "barberia", days: ["2026-11-10", "2026-11-11"], ranges: [] });
   assert.equal(r.body.outside.length, 1);
   assert.equal(r.body.outside[0].id, b.id);
   assert.equal((await avail("2026-11-11")).open, false);
@@ -427,10 +475,10 @@ test("horario: abrir un domingo, cerrar un día, volver al semanal", async (t) =
   const salon = (await call("GET", "/api/availability?services=color&from=2026-11-11&days=1")).body.days[0];
   assert.equal(salon.open, true);
 
-  await call("PUT", "/api/admin/schedule/days", { category: "barberia", days: ["2026-11-11"], ranges: null }, token);
+  await adm("PUT", "/api/admin/schedule/days", { category: "barberia", days: ["2026-11-11"], ranges: null });
   assert.equal((await avail("2026-11-11")).open, true);
 
-  const sch = (await call("GET", "/api/admin/schedule?category=barberia&from=2026-11-09&to=2026-11-15", null, token)).body;
+  const sch = (await adm("GET", "/api/admin/schedule?category=barberia&from=2026-11-09&to=2026-11-15")).body;
   assert.equal(sch.days.length, 7);
   assert.deepEqual(sch.days.find((d) => d.day === "2026-11-15"), { day: "2026-11-15", ranges: [[600, 780]], special: true, bookings: 0 });
   assert.equal(sch.days.find((d) => d.day === "2026-11-10").bookings, 1);
@@ -438,15 +486,15 @@ test("horario: abrir un domingo, cerrar un día, volver al semanal", async (t) =
 
 test("horario semanal: solo días habilitados", async (t) => {
   const { call, admin } = await setup(t);
-  const token = await admin();
+  const adm = await admin();
   const week = { 0: [], 1: [], 2: [], 3: [], 4: [[540, 720], [840, 1080]], 5: [], 6: [] };
-  assert.equal((await call("PUT", "/api/admin/schedule/week", { category: "barberia", week }, token)).status, 200);
+  assert.equal((await adm("PUT", "/api/admin/schedule/week", { category: "barberia", week })).status, 200);
   const days = (await call("GET", "/api/availability?services=corte&from=2026-11-09&days=7")).body.days;
   assert.deepEqual(days.filter((d) => d.open).map((d) => d.day), ["2026-11-12"]);
   const thu = days.find((d) => d.day === "2026-11-12").slots;
   assert.ok(!thu.includes(720) && thu.includes(840));
 
-  assert.equal((await call("PUT", "/api/admin/schedule/week", { category: "barberia", week: { ...week, 1: [[600, 500]] } }, token)).status, 400);
-  assert.equal((await call("PUT", "/api/admin/schedule/days", { category: "nope", days: ["2026-11-12"], ranges: [] }, token)).status, 400);
+  assert.equal((await adm("PUT", "/api/admin/schedule/week", { category: "barberia", week: { ...week, 1: [[600, 500]] } })).status, 400);
+  assert.equal((await adm("PUT", "/api/admin/schedule/days", { category: "nope", days: ["2026-11-12"], ranges: [] })).status, 400);
   assert.equal((await call("PUT", "/api/admin/schedule/week", { category: "barberia", week })).status, 401);
 });

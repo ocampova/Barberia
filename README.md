@@ -55,6 +55,9 @@ Se envían con [Resend](https://resend.com), cuyo plan gratis da 3000 correos al
 
 ### Panel del barbero (`/admin`)
 
+Se entra con correo o teléfono y contraseña, con una cuenta de **administrador**. En **Equipo** se da o quita acceso a otras personas (por ejemplo, la persona del salón), que primero deben crear su cuenta en la app.
+
+
 - **Pendientes:** las citas por confirmar, con un número rojo que avisa cuando entra una nueva. Se revisa cada 30 segundos.
 - **Agenda:** las citas por día. Desde aquí se marca a cada cliente como atendido, "no vino", cancelada, o se le manda un recordatorio por WhatsApp.
 - **+ Cita:** para agendar a quien llama o llega al local. Esa cita queda confirmada de una vez.
@@ -72,7 +75,7 @@ Se envían con [Resend](https://resend.com), cuyo plan gratis da 3000 correos al
 Requiere Node 22.5 o más reciente. No usa dependencias externas, así que no hace falta `npm install`.
 
 ```bash
-npm run dev          # http://localhost:8080   panel: /admin   PIN: 123456
+npm run dev          # http://localhost:8080   panel: /admin   admin@barberia.test / admin12345
 npm test             # pruebas automáticas
 ```
 
@@ -83,7 +86,7 @@ Cualquier hosting que corra Node o Docker y tenga **disco persistente** para la 
 ```bash
 docker build -t barberia .
 docker run -d -p 8080:8080 -v barberia-data:/data \
-  -e ADMIN_PIN=xxxxxx -e ADMIN_SECRET=$(openssl rand -hex 32) \
+  -e ADMIN_EMAIL=tu@correo.com -e ADMIN_PASSWORD='una-contraseña-larga' \
   -e NOTIFY_URL=https://ntfy.sh/tu-tema-secreto -e TRUST_PROXY=1 barberia
 ```
 
@@ -105,7 +108,10 @@ Las variables están explicadas en `.env.example`. Importante: haz copias de seg
 
 ## Seguridad
 
-- El panel se protege con un PIN, con un máximo de 6 intentos cada 15 minutos. Las sesiones duran 12 horas.
+- **Panel:** se entra con una cuenta de rol administrador (correo o teléfono y contraseña), igual que los clientes. Una cuenta de cliente no puede entrar.
+  - El primer administrador se crea con `ADMIN_EMAIL` y `ADMIN_PASSWORD`. Nunca se convierte en administrador una cuenta que ya existía, porque alguien pudo registrarla antes con ese correo.
+  - Para dar o quitar acceso, desde el panel: **Equipo**. Desde la terminal del servidor: `npm run admin -- correo@ejemplo.com` (o `--quitar`).
+  - Quitarle el acceso a alguien cierra sus sesiones abiertas.
 - **Cuentas de clientes:**
   - Las contraseñas se guardan cifradas con scrypt.
   - La sesión va en una cookie `HttpOnly` y `SameSite=Lax`, que es `Secure` cuando se usa https.
