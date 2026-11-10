@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0a09" />
+  <meta name="robots" content="noindex" />
+  <title>Panel · Víctor Aguilar Barbería</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="stylesheet" href="css/admin.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- LOGIN -->
+    <section id="login" class="login" hidden>
+      <div class="monogram" aria-hidden="true">VA</div>
+      <h1>Panel de la barbería</h1>
+      <form id="login-form">
+        <label class="field">
+          <span>PIN</span>
+          <input name="pin" type="password" inputmode="numeric" autocomplete="current-password" required />
+        </label>
+        <button class="btn btn--gold btn--block">Entrar</button>
+      </form>
+    </section>
+
+    <!-- PANEL -->
+    <section id="panel" hidden>
+      <header class="topbar adm-top">
+        <h1>Panel</h1>
+        <button class="link" data-action="logout">Salir</button>
+      </header>
+
+      <!-- Pendientes -->
+      <div class="view" data-view="pending">
+        <p class="adm-hint">Confirma o rechaza. Al hacerlo se abre WhatsApp con el mensaje listo para el cliente.</p>
+        <div class="list" id="pending-list"></div>
+      </div>
+
+      <!-- Agenda -->
+      <div class="view" data-view="agenda" hidden>
+        <div class="days adm-days" id="adm-days"></div>
+        <div class="adm-dayhead">
+          <h2 id="adm-dayname"></h2>
+          <button class="btn btn--ghost adm-small" data-action="new-booking">+ Cita</button>
+        </div>
+        <div class="list" id="agenda-list"></div>
+      </div>
+
+      <!-- Bloquear -->
+      <div class="view" data-view="blocks" hidden>
+        <form id="block-form" class="pane">
+          <p class="adm-hint">Cierra un horario: almuerzo, vacaciones, una diligencia. Nadie podrá reservar ahí.</p>
+          <label class="field"><span>Día</span><input type="date" name="day" required /></label>
+          <div class="adm-row">
+            <label class="field"><span>Desde</span><input type="time" name="from" step="900" required /></label>
+            <label class="field"><span>Hasta</span><input type="time" name="to" step="900" required /></label>
+          </div>
+          <label class="field"><span>Aplica a</span>
+            <select name="category" id="block-cat"></select>
+          </label>
+          <label class="field"><span>Motivo (opcional)</span><input name="reason" maxlength="80" placeholder="Almuerzo" /></label>
+          <div class="adm-row">
+            <button type="button" class="btn btn--ghost" data-action="whole-day">Todo el día</button>
+            <button class="btn btn--gold">Bloquear</button>
+          </div>
+        </form>
+      </div>
+
+      <nav class="tabbar" aria-label="Secciones">
+        <button class="tab is-active" data-goto="pending"><span class="ico ico--list"></span>Pendientes <b class="badge" id="badge" hidden></b></button>
+        <button class="tab" data-goto="agenda"><span class="ico ico--cal"></span>Agenda</button>
+        <button class="tab" data-goto="blocks"><span class="ico ico--lock"></span>Bloquear</button>
+      </nav>
+    </section>
+
+    <!-- NUEVA CITA -->
+    <div class="flow" id="new-booking" hidden role="dialog" aria-modal="true">
+      <header class="flow__head">
+        <span></span>
+        <strong>Nueva cita</strong>
+        <button class="iconbtn" data-action="close-new" aria-label="Cerrar">×</button>
+      </header>
+      <form class="flow__body pane" id="new-form">
+        <label class="field"><span>Día</span><input type="date" name="day" required /></label>
+        <label class="field"><span>Hora</span><input type="time" name="time" step="900" required /></label>
+        <div class="field"><span>Servicios</span><div class="adm-checks" id="new-services"></div></div>
+        <label class="field"><span>Nombre</span><input name="name" maxlength="60" required /></label>
+        <label class="field"><span>Teléfono (opcional)</span><input name="phone" type="tel" inputmode="numeric" /></label>
+        <label class="field"><span>Nota (opcional)</span><input name="note" maxlength="200" /></label>
+        <label class="adm-check"><input type="checkbox" name="force" /> Agendar aunque choque con otra cita</label>
+        <button class="btn btn--gold btn--block">Guardar cita</button>
+      </form>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </div>
+  <script src="js/admin.js"></script>
+</body>
+</html>

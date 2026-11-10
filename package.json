@@ -1,0 +1,12 @@
+{
+  "name": "barberia-victor-aguilar",
+  "version": "1.0.0",
+  "private": true,
+  "description": "App de reservas de Víctor Aguilar Barbería y Seimar Salón",
+  "engines": { "node": ">=22.5" },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server/index.js",
+    "dev": "ADMIN_PIN=123456 node --disable-warning=ExperimentalWarning --watch server/index.js",
+    "test": "node --disable-warning=ExperimentalWarning --test \"test/*.test.js\""
+  }
+}

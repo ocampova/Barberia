@@ -1,0 +1,85 @@
+"use strict";
+const { DatabaseSync } = require("node:sqlite");
+const fs = require("node:fs");
+const path = require("node:path");
+
+function openDb(file) {
+  if (file !== ":memory:") fs.mkdirSync(path.dirname(file), { recursive: true });
+  const db = new DatabaseSync(file);
+  db.exec(`
+    PRAGMA journal_mode = WAL;
+    PRAGMA busy_timeout = 5000;
+    CREATE TABLE IF NOT EXISTS bookings (
+      id         TEXT PRIMARY KEY,
+      token      TEXT NOT NULL,
+      category   TEXT NOT NULL,
+      day        TEXT NOT NULL,
+      start      INTEGER NOT NULL,
+      minutes    INTEGER NOT NULL,
+      services   TEXT NOT NULL,
+      total      INTEGER,
+      name       TEXT NOT NULL,
+      phone      TEXT NOT NULL,
+      note       TEXT NOT NULL DEFAULT '',
+      status     TEXT NOT NULL,
+      source     TEXT NOT NULL DEFAULT 'web',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS bookings_day ON bookings(day);
+    CREATE INDEX IF NOT EXISTS bookings_phone ON bookings(phone);
+    CREATE TABLE IF NOT EXISTS blocks (
+      id       INTEGER PRIMARY KEY AUTOINCREMENT,
+      category TEXT,
+      day      TEXT NOT NULL,
+      start    INTEGER NOT NULL,
+      end      INTEGER NOT NULL,
+      reason   TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS blocks_day ON blocks(day);
+  `);
+  return db;
+}
+
+const rowToBooking = (r) => r && { ...r, services: JSON.parse(r.services) };
+
+function repo(db) {
+  const q = {
+    bookingsOn: db.prepare("SELECT * FROM bookings WHERE day = ?"),
+    bookingsRange: db.prepare("SELECT * FROM bookings WHERE day BETWEEN ? AND ? ORDER BY day, start"),
+    bookingById: db.prepare("SELECT * FROM bookings WHERE id = ?"),
+    activeByPhone: db.prepare(
+      "SELECT COUNT(*) AS n FROM bookings WHERE phone = ? AND day >= ? AND status IN ('pendiente','confirmada')"),
+    pendingCount: db.prepare("SELECT COUNT(*) AS n FROM bookings WHERE status = 'pendiente' AND day >= ?"),
+    insertBooking: db.prepare(`INSERT INTO bookings
+      (id, token, category, day, start, minutes, services, total, name, phone, note, status, source, created_at, updated_at)
+      VALUES (:id, :token, :category, :day, :start, :minutes, :services, :total, :name, :phone, :note, :status, :source, :created_at, :updated_at)`),
+    setStatus: db.prepare("UPDATE bookings SET status = ?, updated_at = ? WHERE id = ?"),
+    blocksOn: db.prepare("SELECT * FROM blocks WHERE day = ?"),
+    blocksRange: db.prepare("SELECT * FROM blocks WHERE day BETWEEN ? AND ? ORDER BY day, start"),
+    insertBlock: db.prepare("INSERT INTO blocks (category, day, start, end, reason) VALUES (?, ?, ?, ?, ?)"),
+    deleteBlock: db.prepare("DELETE FROM blocks WHERE id = ?"),
+  };
+
+  return {
+    bookingsOn: (day) => q.bookingsOn.all(day).map(rowToBooking),
+    bookingsRange: (from, to) => q.bookingsRange.all(from, to).map(rowToBooking),
+    bookingById: (id) => rowToBooking(q.bookingById.get(id)),
+    activeByPhone: (phone, fromDay) => q.activeByPhone.get(phone, fromDay).n,
+    pendingCount: (fromDay) => q.pendingCount.get(fromDay).n,
+    insertBooking: (b) => q.insertBooking.run({ ...b, services: JSON.stringify(b.services) }),
+    setStatus: (id, status) => q.setStatus.run(status, new Date().toISOString(), id).changes,
+    blocksOn: (day) => q.blocksOn.all(day),
+    blocksRange: (from, to) => q.blocksRange.all(from, to),
+    insertBlock: (b) => Number(q.insertBlock.run(b.category, b.day, b.start, b.end, b.reason).lastInsertRowid),
+    deleteBlock: (id) => q.deleteBlock.run(id).changes,
+    // node:sqlite es síncrono: la verificación y la inserción ocurren sin que otra petición se intercale.
+    transaction(fn) {
+      db.exec("BEGIN IMMEDIATE");
+      try { const r = fn(); db.exec("COMMIT"); return r; }
+      catch (e) { db.exec("ROLLBACK"); throw e; }
+    },
+  };
+}
+
+module.exports = { openDb, repo };

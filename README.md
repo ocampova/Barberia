@@ -16,23 +16,70 @@ Rediseño completo de la app de reservas, que hoy vive en Bewe. Está pensada pr
 | — | "Espacios para hoy" en la portada (lo que hoy se anuncia con flyers) |
 | — | "Mis citas", con opción de cancelar |
 
-## Estructura
+## Cómo funciona
 
-- `index.html`: las pantallas Inicio, Servicios, Mis citas y el flujo de reserva.
-- `css/styles.css`: el diseño.
-- `js/data.js`: **datos editables**: servicios, precios, horarios y políticas.
-- `js/app.js`: la lógica.
-
-## Probar localmente
-
-```bash
-python3 -m http.server 8080
-# abrir http://localhost:8080 en el celular o el navegador
+```
+Cliente (celular)  ──►  API (/api/…)  ──►  SQLite (data/barberia.db)
+                               │
+Barbero (/admin)   ◄───────────┘   + aviso push opcional (ntfy)
 ```
 
-## Pendiente
+1. El cliente elige servicios, día y hora. El servidor solo ofrece horas realmente libres y vuelve a verificar al guardar, así que dos personas no pueden tomar el mismo espacio.
+2. La cita queda **pendiente** y al barbero le llega un aviso, si configuraste `NOTIFY_URL`.
+3. En `/admin` el barbero toca **Confirmar** o **Rechazar**. Se abre WhatsApp con el mensaje ya escrito para el cliente.
+4. En "Mis citas", el cliente ve el estado de su cita (pendiente, confirmada…) y puede cancelarla, lo que libera el espacio.
 
-- **Disponibilidad real:** hoy los espacios ocupados se simulan en `busyBlocks()` (`js/app.js`). Hay que conectarlo a un backend o a la API de Bewe.
-- **Horarios:** confirmar los de atención en `js/data.js`. Ahora están puestos de lunes a viernes de 9:00 a 19:00, sábado de 8:00 a 17:00 y domingo cerrado.
-- **Precios de Seimar Salón:** la página actual no los muestra, así que aparecen como "Consultar".
-- **Citas:** ahora se guardan solo en el navegador del cliente (`localStorage`).
+### Panel del barbero (`/admin`)
+
+- **Pendientes:** las citas por confirmar, con un número rojo que avisa cuando entra una nueva. Se revisa cada 30 segundos.
+- **Agenda:** las citas por día. Desde aquí se marca a cada cliente como atendido, "no vino", cancelada, o se le manda un recordatorio por WhatsApp.
+- **+ Cita:** para agendar a quien llama o llega al local. Esa cita queda confirmada de una vez.
+- **Bloquear:** cierra horarios (almuerzo, vacaciones), para todo el negocio o solo para barbería o salón.
+
+## Correr en tu computadora
+
+Requiere Node 22.5 o más reciente. No usa dependencias externas, así que no hace falta `npm install`.
+
+```bash
+npm run dev          # http://localhost:8080   panel: /admin   PIN: 123456
+npm test             # pruebas automáticas
+```
+
+## Publicarla en internet
+
+Cualquier hosting que corra Node o Docker y tenga **disco persistente** para la base de datos sirve: Railway, Render, Fly.io o un VPS.
+
+```bash
+docker build -t barberia .
+docker run -d -p 8080:8080 -v barberia-data:/data \
+  -e ADMIN_PIN=xxxxxx -e ADMIN_SECRET=$(openssl rand -hex 32) \
+  -e NOTIFY_URL=https://ntfy.sh/tu-tema-secreto -e TRUST_PROXY=1 barberia
+```
+
+Las variables están explicadas en `.env.example`. Importante: haz copias de seguridad del volumen `/data`, porque ahí viven todas las citas.
+
+## Estructura
+
+| Archivo | Qué es |
+|---|---|
+| `server/config.js` | **Lo que se edita:** servicios, precios, horarios, políticas y cuántas citas simultáneas se atienden |
+| `server/app.js` | La API: disponibilidad, reservas y panel |
+| `server/availability.js` | El cálculo de horas libres |
+| `server/db.js` | La base de datos SQLite |
+| `public/index.html`, `js/app.js` | La app del cliente |
+| `public/admin.html`, `js/admin.js` | El panel del barbero |
+| `test/` | Las pruebas automáticas |
+
+## Seguridad
+
+- El panel se protege con un PIN, con un máximo de 6 intentos cada 15 minutos. Las sesiones duran 12 horas.
+- Cada cliente ve y cancela sus citas solo con un código secreto que queda guardado en su celular.
+- Las reservas tienen límites: 8 intentos por hora por conexión, 3 citas activas por teléfono y un campo invisible que frena a los bots.
+- El cliente nunca ve teléfonos ni datos de otras personas.
+
+## Pendiente de confirmar con la barbería
+
+- **Horarios reales:** en `server/config.js`. Ahora dicen lunes a viernes de 9:00 a 19:00, sábado de 8:00 a 17:00 y domingo cerrado.
+- **Precios de Seimar Salón:** aparecen como "Consultar".
+- **Cuántos barberos atienden a la vez:** `capacity` en `server/config.js`. Ahora es 1.
+- **El logo real:** en lugar del monograma "VA" provisional.

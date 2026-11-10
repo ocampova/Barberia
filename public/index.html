@@ -127,7 +127,7 @@
           <form id="details" novalidate>
             <label class="field">
               <span>Nombre</span>
-              <input name="name" autocomplete="name" required placeholder="¿Cómo te llamas?" />
+              <input name="name" autocomplete="name" maxlength="60" required placeholder="¿Cómo te llamas?" />
             </label>
             <label class="field">
               <span>Teléfono</span>
@@ -135,8 +135,10 @@
             </label>
             <label class="field">
               <span>Nota (opcional)</span>
-              <textarea name="note" rows="2" placeholder="Ej: degradado bajo, mantener largo arriba"></textarea>
+              <textarea name="note" rows="2" maxlength="200" placeholder="Ej: degradado bajo, mantener largo arriba"></textarea>
             </label>
+            <!-- Campo trampa para bots: las personas no lo ven. -->
+            <input name="website" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true" />
           </form>
           <div class="summary" id="summary"></div>
           <details class="policy">
@@ -158,10 +160,14 @@
       </footer>
     </div>
 
+    <div class="boot-error" id="boot-error" hidden>
+      <p></p>
+      <button class="btn btn--gold" data-action="retry">Reintentar</button>
+    </div>
+
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
   </div>
 
-  <script src="js/data.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
