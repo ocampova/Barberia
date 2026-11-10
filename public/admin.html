@@ -54,30 +54,44 @@
         <div class="list" id="agenda-list"></div>
       </div>
 
-      <!-- Bloquear -->
-      <div class="view" data-view="blocks" hidden>
-        <form id="block-form" class="pane">
-          <p class="adm-hint">Cierra un horario: almuerzo, vacaciones, una diligencia. Nadie podrá reservar ahí.</p>
-          <label class="field"><span>Día</span><input type="date" name="day" required /></label>
-          <div class="adm-row">
-            <label class="field"><span>Desde</span><input type="time" name="from" step="900" required /></label>
-            <label class="field"><span>Hasta</span><input type="time" name="to" step="900" required /></label>
+      <!-- Horario -->
+      <div class="view" data-view="schedule" hidden>
+        <div class="seg" id="sch-cats" role="tablist"></div>
+        <p class="adm-hint">Toca uno o varios días para abrirlos, cerrarlos o cambiar su horario.</p>
+        <div class="cal">
+          <div class="cal__head">
+            <button class="iconbtn" data-action="cal-prev" aria-label="Mes anterior">‹</button>
+            <strong id="cal-title"></strong>
+            <button class="iconbtn" data-action="cal-next" aria-label="Mes siguiente">›</button>
           </div>
-          <label class="field"><span>Aplica a</span>
-            <select name="category" id="block-cat"></select>
-          </label>
-          <label class="field"><span>Motivo (opcional)</span><input name="reason" maxlength="80" placeholder="Almuerzo" /></label>
-          <div class="adm-row">
-            <button type="button" class="btn btn--ghost" data-action="whole-day">Todo el día</button>
-            <button class="btn btn--gold">Bloquear</button>
+          <div class="cal__dow"><span>Lun</span><span>Mar</span><span>Mié</span><span>Jue</span><span>Vie</span><span>Sáb</span><span>Dom</span></div>
+          <div class="cal__grid" id="cal-grid"></div>
+          <div class="cal__legend">
+            <span><i class="lg lg--open"></i>Abierto</span>
+            <span><i class="lg lg--closed"></i>Cerrado</span>
+            <span><i class="lg lg--special"></i>Cambio solo ese día</span>
           </div>
-        </form>
+        </div>
+        <section class="week-card">
+          <div class="adm-dayhead" style="padding:0">
+            <h2>Horario semanal</h2>
+            <button class="btn btn--ghost adm-small" data-action="edit-week">Editar</button>
+          </div>
+          <p class="adm-hint" style="margin:6px 0 10px">Es el horario normal. Si no trabajas con horario fijo, deja todos los días cerrados y abre solo los que trabajas.</p>
+          <div id="week-summary"></div>
+        </section>
+      </div>
+
+      <!-- Barra de selección de días -->
+      <div class="cartbar selbar" id="selbar" hidden>
+        <div><strong id="sel-count"></strong><small><button class="link" data-action="sel-clear">Quitar selección</button></small></div>
+        <button class="btn btn--gold" data-action="edit-days">Editar</button>
       </div>
 
       <nav class="tabbar" aria-label="Secciones">
         <button class="tab is-active" data-goto="pending"><span class="ico ico--list"></span>Pendientes <b class="badge" id="badge" hidden></b></button>
         <button class="tab" data-goto="agenda"><span class="ico ico--cal"></span>Agenda</button>
-        <button class="tab" data-goto="blocks"><span class="ico ico--lock"></span>Bloquear</button>
+        <button class="tab" data-goto="schedule"><span class="ico ico--clock"></span>Horario</button>
       </nav>
     </section>
 
@@ -99,6 +113,42 @@
         <label class="adm-check"><input type="checkbox" name="force" /> Agendar aunque choque con otra cita</label>
         <button class="btn btn--gold btn--block">Guardar cita</button>
       </form>
+    </div>
+
+    <!-- EDITAR DÍAS -->
+    <div class="flow" id="day-editor" hidden role="dialog" aria-modal="true" aria-labelledby="de-title">
+      <header class="flow__head">
+        <span></span>
+        <strong id="de-title"></strong>
+        <button class="iconbtn" data-action="close-sheet" aria-label="Cerrar">×</button>
+      </header>
+      <div class="flow__body pane">
+        <p class="adm-hint" id="de-sub"></p>
+        <label class="switch-row">
+          <span><strong>Se trabaja</strong><small>Si lo apagas, nadie puede reservar esos días.</small></span>
+          <input type="checkbox" class="switch" id="de-open" />
+        </label>
+        <div id="de-ranges"></div>
+        <p class="adm-hint" id="de-warn" hidden></p>
+      </div>
+      <footer class="flow__foot adm-foot">
+        <button class="btn btn--ghost" data-action="days-reset">Usar horario semanal</button>
+        <button class="btn btn--gold" data-action="days-save">Guardar</button>
+      </footer>
+    </div>
+
+    <!-- EDITAR SEMANA -->
+    <div class="flow" id="week-editor" hidden role="dialog" aria-modal="true">
+      <header class="flow__head">
+        <span></span>
+        <strong>Horario semanal</strong>
+        <button class="iconbtn" data-action="close-sheet" aria-label="Cerrar">×</button>
+      </header>
+      <div class="flow__body pane" id="we-days"></div>
+      <footer class="flow__foot adm-foot">
+        <button class="btn btn--ghost" data-action="close-sheet">Cancelar</button>
+        <button class="btn btn--gold" data-action="week-save">Guardar</button>
+      </footer>
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>

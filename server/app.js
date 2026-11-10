@@ -2,8 +2,8 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
-const { freeSlots, ACTIVE } = require("./availability");
-const { isDay, addDays, nowIn, fmtTime } = require("./time");
+const { freeSlots, checkRanges, ACTIVE } = require("./availability");
+const { isDay, addDays, nowIn, fmtTime, weekday } = require("./time");
 const { render: renderEmail } = require("./emails");
 const { createMailer } = require("./mailer");
 
@@ -79,8 +79,39 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     return { list, category, minutes, total };
   }
 
-  const slotsFor = (category, day, minutes) =>
-    freeSlots({ config, category, day, minutes, bookings: repo.bookingsOn(day), blocks: repo.blocksOn(day), now: now() });
+  /* ---------- Horario ---------- */
+  // La primera vez, el horario semanal se copia de config.hours. Después se edita desde el panel.
+  for (const c of config.categories) {
+    const week = repo.weekGet(c.id);
+    for (let wd = 0; wd < 7; wd++)
+      if (!week[wd]) repo.weekSet(c.id, wd, config.hours[wd] ? [config.hours[wd]] : []);
+  }
+  const categoryIds = new Set(config.categories.map((c) => c.id));
+
+  /** Turnos de trabajo de un día: la excepción de esa fecha o, si no hay, el horario semanal. */
+  function rangesFor(category, day) {
+    const special = repo.dayGet(category, day);
+    if (special) return special;
+    return repo.weekGet(category)[weekday(day)] || [];
+  }
+
+  const slotsFor = (category, day, minutes, nowArg = now()) =>
+    freeSlots({ config, category, day, minutes, ranges: rangesFor(category, day),
+      bookings: repo.bookingsOn(day), blocks: repo.blocksOn(day), now: nowArg });
+
+  function openStatus(category) {
+    const n = now();
+    const today = rangesFor(category, n.day);
+    const cur = today.find(([a, b]) => n.minutes >= a && n.minutes < b);
+    if (cur) return { open: true, closesAt: cur[1] };
+    const later = today.find(([a]) => a > n.minutes);
+    if (later) return { open: false, opensAt: later[0], opensDay: n.day };
+    for (let i = 1; i <= 14; i++) {
+      const d = addDays(n.day, i), r = rangesFor(category, d);
+      if (r.length) return { open: false, opensAt: r[0][0], opensDay: d };
+    }
+    return { open: false };
+  }
 
   const publicBooking = (b) => ({
     id: b.id, day: b.day, start: b.start, minutes: b.minutes, services: b.services,
@@ -138,10 +169,11 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
   route("GET", "/api/health", () => ({ ok: true }));
 
   route("GET", "/api/config", () => {
-    const { name, tagline, partner, slogan, location, mapsUrl, phone, whatsapp, currency, hours,
+    const { name, tagline, partner, slogan, location, mapsUrl, phone, whatsapp, currency,
       slotStepMinutes, daysAhead, policies, categories, services: svc } = config;
-    return { name, tagline, partner, slogan, location, mapsUrl, phone, whatsapp, currency, hours,
+    return { name, tagline, partner, slogan, location, mapsUrl, phone, whatsapp, currency,
       slotStepMinutes, daysAhead, policies, categories: categories.map(({ id, name }) => ({ id, name })),
+      status: openStatus(categories[0].id),
       services: svc, today: now().day, nowMinutes: now().minutes, emailEnabled: mail.enabled !== false };
   });
 
@@ -154,7 +186,7 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     const out = [];
     for (let i = 0; i < days; i++) {
       const day = addDays(from, i);
-      out.push({ day, slots: slotsFor(category, day, minutes) });
+      out.push({ day, open: rangesFor(category, day).length > 0, slots: slotsFor(category, day, minutes) });
     }
     return { minutes, days: out };
   });
@@ -240,7 +272,7 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
       // Reactivar una cita: el espacio tiene que seguir libre.
       const others = repo.bookingsOn(b.day).filter((x) => x.id !== b.id);
       const free = freeSlots({ config, category: b.category, day: b.day, minutes: b.minutes,
-        bookings: others, blocks: repo.blocksOn(b.day), now: null });
+        ranges: rangesFor(b.category, b.day), bookings: others, blocks: repo.blocksOn(b.day), now: null });
       if (!free.includes(b.start)) throw new HttpError(409, "Ese espacio ya está ocupado.");
     }
     repo.setStatus(b.id, body.status);
@@ -260,8 +292,7 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     const email = cleanEmail(body.email);
     const note = cleanText(body.note, 200, "nota", false);
     const created = repo.transaction(() => {
-      const free = freeSlots({ config, category, day: body.day, minutes, bookings: repo.bookingsOn(body.day),
-        blocks: repo.blocksOn(body.day), now: null });
+      const free = slotsFor(category, body.day, minutes, null);
       if (!body.force && !free.includes(body.start)) throw new HttpError(409, "Ese espacio está ocupado o fuera de horario.");
       const ts = new Date().toISOString();
       const b = {
@@ -293,9 +324,74 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     return { ok: true };
   }, { admin: true });
 
+  /* ---------- Horario (panel) ---------- */
+  function parseCategory(v) {
+    const c = String(v || "");
+    if (!categoryIds.has(c)) throw new HttpError(400, "Categoría inválida.");
+    return c;
+  }
+
+  // Horario resuelto de un rango de fechas, con las citas activas de cada día.
+  route("GET", "/api/admin/schedule", ({ query }) => {
+    const category = parseCategory(query.get("category"));
+    const from = query.get("from") || now().day;
+    const to = query.get("to") || addDays(from, 41);
+    if (!isDay(from) || !isDay(to) || to < from || to > addDays(from, 120)) throw new HttpError(400, "Rango inválido.");
+    const week = repo.weekGet(category);
+    const special = repo.daysRange(category, from, to);
+    const active = {};
+    for (const b of repo.bookingsRange(from, to))
+      if (b.category === category && ACTIVE.has(b.status)) active[b.day] = (active[b.day] || 0) + 1;
+    const days = [];
+    for (let d = from; d <= to; d = addDays(d, 1)) {
+      days.push({ day: d, ranges: special[d] || week[weekday(d)] || [], special: Boolean(special[d]), bookings: active[d] || 0 });
+    }
+    return { category, week, days, today: now().day };
+  }, { admin: true });
+
+  route("PUT", "/api/admin/schedule/week", ({ body }) => {
+    const category = parseCategory(body.category);
+    const week = body.week || {};
+    for (let wd = 0; wd < 7; wd++) {
+      const r = week[wd];
+      if (!r) throw new HttpError(400, "Falta el horario de algún día.");
+      const err = checkRanges(r);
+      if (err) throw new HttpError(400, err);
+    }
+    repo.transaction(() => { for (let wd = 0; wd < 7; wd++) repo.weekSet(category, wd, week[wd]); });
+    return { ok: true, week: repo.weekGet(category) };
+  }, { admin: true });
+
+  // Abrir, cerrar o cambiar el horario de uno o varios días.
+  // ranges: [[inicio, fin], ...] para abrir con ese horario, [] para cerrar, null para volver al horario semanal.
+  route("PUT", "/api/admin/schedule/days", ({ body }) => {
+    const category = parseCategory(body.category);
+    const days = body.days;
+    if (!Array.isArray(days) || !days.length || days.length > 120 || days.some((d) => !isDay(d)))
+      throw new HttpError(400, "Elige al menos un día válido.");
+    const ranges = body.ranges;
+    if (ranges !== null) {
+      const err = checkRanges(ranges);
+      if (err) throw new HttpError(400, err);
+    }
+    repo.transaction(() => {
+      for (const d of days) ranges === null ? repo.dayDelete(category, d) : repo.daySet(category, d, ranges);
+    });
+    // Citas activas que quedan fuera del nuevo horario: no se cancelan solas, se avisan.
+    const outside = [];
+    for (const d of days) {
+      const r = rangesFor(category, d);
+      for (const b of repo.bookingsOn(d))
+        if (b.category === category && ACTIVE.has(b.status) &&
+            !r.some(([a, z]) => b.start >= a && b.start + b.minutes <= z))
+          outside.push({ id: b.id, day: b.day, start: b.start, name: b.name });
+    }
+    return { ok: true, outside };
+  }, { admin: true });
+
   /* ---------- Manejador HTTP ---------- */
   async function readJson(req) {
-    if (!["POST", "PATCH"].includes(req.method)) return {};
+    if (!["POST", "PATCH", "PUT"].includes(req.method)) return {};
     let size = 0; const chunks = [];
     for await (const c of req) {
       size += c.length;

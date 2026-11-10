@@ -37,6 +37,20 @@ function openDb(file) {
       reason   TEXT NOT NULL DEFAULT ''
     );
     CREATE INDEX IF NOT EXISTS blocks_day ON blocks(day);
+    -- Horario semanal por categoría: ranges = JSON [[inicio, fin], ...] en minutos; [] = cerrado.
+    CREATE TABLE IF NOT EXISTS schedule_week (
+      category TEXT NOT NULL,
+      weekday  INTEGER NOT NULL,
+      ranges   TEXT NOT NULL,
+      PRIMARY KEY (category, weekday)
+    );
+    -- Excepciones por fecha: reemplazan al horario semanal ese día ([] = cerrado).
+    CREATE TABLE IF NOT EXISTS schedule_days (
+      category TEXT NOT NULL,
+      day      TEXT NOT NULL,
+      ranges   TEXT NOT NULL,
+      PRIMARY KEY (category, day)
+    );
   `);
   // Migraciones: columnas agregadas después de la primera versión.
   const cols = db.prepare("PRAGMA table_info(bookings)").all().map((c) => c.name);
@@ -66,6 +80,14 @@ function repo(db) {
     blocksRange: db.prepare("SELECT * FROM blocks WHERE day BETWEEN ? AND ? ORDER BY day, start"),
     insertBlock: db.prepare("INSERT INTO blocks (category, day, start, end, reason) VALUES (?, ?, ?, ?, ?)"),
     deleteBlock: db.prepare("DELETE FROM blocks WHERE id = ?"),
+    weekGet: db.prepare("SELECT weekday, ranges FROM schedule_week WHERE category = ?"),
+    weekSet: db.prepare(`INSERT INTO schedule_week (category, weekday, ranges) VALUES (?, ?, ?)
+      ON CONFLICT (category, weekday) DO UPDATE SET ranges = excluded.ranges`),
+    dayGet: db.prepare("SELECT ranges FROM schedule_days WHERE category = ? AND day = ?"),
+    daysRange: db.prepare("SELECT day, ranges FROM schedule_days WHERE category = ? AND day BETWEEN ? AND ?"),
+    daySet: db.prepare(`INSERT INTO schedule_days (category, day, ranges) VALUES (?, ?, ?)
+      ON CONFLICT (category, day) DO UPDATE SET ranges = excluded.ranges`),
+    dayDelete: db.prepare("DELETE FROM schedule_days WHERE category = ? AND day = ?"),
   };
 
   return {
@@ -82,6 +104,20 @@ function repo(db) {
     blocksRange: (from, to) => q.blocksRange.all(from, to),
     insertBlock: (b) => Number(q.insertBlock.run(b.category, b.day, b.start, b.end, b.reason).lastInsertRowid),
     deleteBlock: (id) => q.deleteBlock.run(id).changes,
+    weekGet(category) {
+      const out = {};
+      for (const r of q.weekGet.all(category)) out[r.weekday] = JSON.parse(r.ranges);
+      return out;
+    },
+    weekSet: (category, weekday, ranges) => q.weekSet.run(category, weekday, JSON.stringify(ranges)),
+    dayGet(category, day) { const r = q.dayGet.get(category, day); return r ? JSON.parse(r.ranges) : null; },
+    daysRange(category, from, to) {
+      const out = {};
+      for (const r of q.daysRange.all(category, from, to)) out[r.day] = JSON.parse(r.ranges);
+      return out;
+    },
+    daySet: (category, day, ranges) => q.daySet.run(category, day, JSON.stringify(ranges)),
+    dayDelete: (category, day) => q.dayDelete.run(category, day).changes,
     // node:sqlite es síncrono: la verificación y la inserción ocurren sin que otra petición se intercale.
     transaction(fn) {
       db.exec("BEGIN IMMEDIATE");

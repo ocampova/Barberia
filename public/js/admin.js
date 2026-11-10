@@ -109,8 +109,15 @@
   async function renderAgenda() {
     agendaDay = agendaDay || C.today;
     const days = Array.from({ length: C.daysAhead + 1 }, (_, i) => addDays(C.today, i - 1));
+    // Horario de cada categoría para el rango visible
+    const sched = {};
+    await Promise.all(C.categories.map(async (c) => {
+      const r = await api(`/api/admin/schedule?category=${c.id}&from=${days[0]}&to=${days.at(-1)}`);
+      sched[c.id] = Object.fromEntries(r.days.map((d) => [d.day, d.ranges]));
+    }));
+    const openAny = (d) => C.categories.some((c) => (sched[c.id][d] || []).length);
     $("#adm-days").innerHTML = days.map((d) => `<button class="day ${d === agendaDay ? "is-active" : ""}" data-aday="${d}">
-      <small>${d === C.today ? "Hoy" : DOW[asDate(d).getDay()]}</small><strong>${asDate(d).getDate()}</strong><i>${C.hours[asDate(d).getDay()] ? "" : "Cerrado"}</i></button>`).join("");
+      <small>${d === C.today ? "Hoy" : DOW[asDate(d).getDay()]}</small><strong>${asDate(d).getDate()}</strong><i>${openAny(d) ? "" : "Cerrado"}</i></button>`).join("");
     requestAnimationFrame(() => $(".adm-days .is-active")?.scrollIntoView({ inline: "center", block: "nearest" }));
     $("#adm-dayname").textContent = longDate(agendaDay);
 
@@ -122,8 +129,11 @@
         <p class="bk__meta">${esc(k.reason || "Sin motivo")} · ${k.category ? esc(C.categories.find((c) => c.id === k.category)?.name) : "Todo el negocio"}</p>
         <div class="bk__actions"><button class="btn btn--ghost" data-unblock="${k.id}">Quitar bloqueo</button></div></article>` })),
     ].sort((a, b) => a.t - b.t);
-    const h = C.hours[asDate(agendaDay).getDay()];
-    $("#agenda-list").innerHTML = (h ? `<p class="adm-hint" style="margin:0">Horario: ${fmtTime(h[0])} – ${fmtTime(h[1])}</p>` : `<p class="adm-hint" style="margin:0">Cerrado este día.</p>`) +
+    const hoursLine = C.categories.map((c) => {
+      const r = sched[c.id][agendaDay] || [];
+      return `${esc(c.name)}: ${r.length ? rangesText(r) : "cerrado"}`;
+    }).join(" · ");
+    $("#agenda-list").innerHTML = `<p class="adm-hint" style="margin:0">${hoursLine}</p>` +
       (items.length ? items.map((i) => i.html).join("") : `<p class="empty-state">Agenda libre.</p>`);
   }
 
@@ -136,7 +146,9 @@
     try {
       if (v === "pending") await renderPending();
       if (v === "agenda") await renderAgenda();
+      if (v === "schedule") await renderSchedule();
     } catch (e) { toast(e.message); }
+    renderSelbar();
   }
 
   async function refreshBadge() {
@@ -190,27 +202,182 @@
       case "logout": return logout();
       case "new-booking": return openNew();
       case "close-new": $("#new-booking").hidden = true; return;
-      case "whole-day": {
-        const f = $("#block-form"); const day = f.day.value;
-        const h = day && C.hours[asDate(day).getDay()];
-        if (!h) return toast(day ? "Ese día ya está cerrado" : "Elige primero el día");
-        const hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
-        f.from.value = hhmm(h[0]); f.to.value = hhmm(h[1]);
-        return;
-      }
+      case "cal-prev": calMonth = shiftMonth(calMonth, -1); return renderSchedule();
+      case "cal-next": calMonth = shiftMonth(calMonth, 1); return renderSchedule();
+      case "sel-clear": selected.clear(); return renderSchedule();
+      case "edit-days": return openDayEditor();
+      case "edit-week": return openWeekEditor();
+      case "close-sheet": $("#day-editor").hidden = true; $("#week-editor").hidden = true; return;
+      case "add-range": return addRangeRow(el.closest(".ranges"));
+      case "del-range": el.closest(".range").remove(); return;
+      case "days-save": return saveDays(false);
+      case "days-reset": return saveDays(true);
+      case "week-save": return saveWeek();
     }
+    if (ds.cal) {
+      selected.has(ds.cal) ? selected.delete(ds.cal) : selected.add(ds.cal);
+      return renderSchedule();
+    }
+    if (ds.schcat) { schCategory = ds.schcat; selected.clear(); return renderSchedule(); }
   });
 
-  $("#block-form").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const f = e.target;
+  /* ---------- Horario ---------- */
+  let schCategory = null;
+  let calMonth = null;          // "YYYY-MM"
+  let sched = null;             // respuesta de /api/admin/schedule
+  const selected = new Set();   // días seleccionados
+  const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
+  const DOW_LONG = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+  const hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+  const shortT = (m) => { const h = ((Math.floor(m / 60) + 11) % 12) + 1; return m % 60 ? `${h}:${String(m % 60).padStart(2, "0")}` : `${h}`; };
+  const rangesText = (r) => r.map(([a, b]) => `${fmtTime(a)} – ${fmtTime(b)}`).join(", ");
+  const shiftMonth = (ym, n) => { const [y, m] = ym.split("-").map(Number); const d = new Date(y, m - 1 + n, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
+
+  async function renderSchedule() {
+    schCategory = schCategory || C.categories[0].id;
+    calMonth = calMonth || C.today.slice(0, 7);
+    const minMonth = C.today.slice(0, 7), maxMonth = shiftMonth(minMonth, 4);
+    if (calMonth < minMonth) calMonth = minMonth;
+    if (calMonth > maxMonth) calMonth = maxMonth;
+
+    $("#sch-cats").innerHTML = C.categories.map((c) =>
+      `<button class="${c.id === schCategory ? "is-active" : ""}" data-schcat="${c.id}" role="tab">${esc(c.name)}</button>`).join("");
+
+    const first = calMonth + "-01";
+    const last = addDays(shiftMonth(calMonth, 1) + "-01", -1);
+    sched = await api(`/api/admin/schedule?category=${schCategory}&from=${first}&to=${last}`);
+    const byDay = Object.fromEntries(sched.days.map((d) => [d.day, d]));
+
+    const [y, m] = calMonth.split("-").map(Number);
+    $("#cal-title").textContent = new Date(y, m - 1, 1).toLocaleDateString("es-CR", { month: "long", year: "numeric" });
+    $("[data-action=cal-prev]").disabled = calMonth <= minMonth;
+    $("[data-action=cal-next]").disabled = calMonth >= maxMonth;
+
+    const lead = (asDate(first).getDay() + 6) % 7; // lunes primero
+    const cells = Array.from({ length: lead }, () => `<span></span>`);
+    for (let d = first; d <= last; d = addDays(d, 1)) {
+      const info = byDay[d];
+      const past = d < C.today;
+      const open = info.ranges.length > 0;
+      const label = open ? `${shortT(info.ranges[0][0])}–${shortT(info.ranges.at(-1)[1])}` : "Cerrado";
+      cells.push(`<button class="cal__day ${open ? "is-open" : "is-closed"} ${info.special ? "is-special" : ""} ${selected.has(d) ? "is-sel" : ""} ${d === C.today ? "is-today" : ""}"
+        data-cal="${d}" ${past ? "disabled" : ""} aria-pressed="${selected.has(d)}" aria-label="${longDate(d)}: ${open ? rangesText(info.ranges) : "cerrado"}">
+        <b>${asDate(d).getDate()}</b><small>${label}</small>${info.bookings ? `<em>${info.bookings}</em>` : ""}</button>`);
+    }
+    $("#cal-grid").innerHTML = cells.join("");
+
+    $("#week-summary").innerHTML = WEEK_ORDER.map((wd) => {
+      const r = sched.week[wd] || [];
+      return `<div class="week-row"><span>${DOW_LONG[wd]}</span><span class="${r.length ? "" : "muted"}">${r.length ? rangesText(r) : "Cerrado"}</span></div>`;
+    }).join("");
+    renderSelbar();
+  }
+
+  function renderSelbar() {
+    const n = selected.size;
+    $("#selbar").hidden = !(view === "schedule" && n);
+    $("#sel-count").textContent = n === 1 ? longDate([...selected][0]) : `${n} días seleccionados`;
+  }
+
+  /* Editor de turnos reutilizable */
+  function rangesHTML(ranges) {
+    const rows = (ranges.length ? ranges : [[540, 1140]]).map(([a, b]) => rangeRow(a, b)).join("");
+    return `<div class="ranges">${rows}<button type="button" class="link add-range" data-action="add-range">+ Agregar turno</button></div>`;
+  }
+  const rangeRow = (a, b) => `<div class="range">
+      <input type="time" step="900" value="${hhmm(a)}" aria-label="Desde" /><span>a</span>
+      <input type="time" step="900" value="${hhmm(b)}" aria-label="Hasta" />
+      <button type="button" class="iconbtn" data-action="del-range" aria-label="Quitar turno">×</button></div>`;
+  function addRangeRow(box) {
+    const rows = $$(".range", box);
+    if (rows.length >= 4) return toast("Máximo 4 turnos por día");
+    const lastEnd = rows.length ? toMin($$("input", rows.at(-1))[1].value || "12:00") : 540;
+    const a = Math.min(lastEnd + 60, 1380), b = Math.min(a + 180, 1440);
+    box.querySelector(".add-range").insertAdjacentHTML("beforebegin", rangeRow(a, b));
+  }
+  function readRanges(box) {
+    const out = [];
+    for (const row of $$(".range", box)) {
+      const [f, t] = $$("input", row);
+      if (!f.value || !t.value) throw new Error("Completa las horas de cada turno");
+      out.push([toMin(f.value), t.value === "00:00" ? 1440 : toMin(t.value)]);
+    }
+    if (!out.length) throw new Error("Agrega al menos un turno o apaga “Se trabaja”");
+    return out;
+  }
+
+  function openDayEditor() {
+    const days = [...selected].sort();
+    if (!days.length) return;
+    const infos = days.map((d) => sched.days.find((x) => x.day === d)).filter(Boolean);
+    const one = infos.length === 1 ? infos[0] : null;
+    const catName = C.categories.find((c) => c.id === schCategory).name;
+    $("#de-title").textContent = one ? longDate(one.day) : `${days.length} días`;
+    $("#de-sub").textContent = one
+      ? `${catName} · ${one.special ? "Horario cambiado solo para este día" : "Usa el horario semanal"}${one.bookings ? ` · ${one.bookings} cita(s)` : ""}`
+      : `${catName} · ${days.map((d) => `${DOW[asDate(d).getDay()]} ${asDate(d).getDate()}`).join(", ")}`;
+    const base = one ? one.ranges : (infos.find((i) => i.ranges.length) || { ranges: [] }).ranges;
+    const open = one ? one.ranges.length > 0 : true;
+    $("#de-open").checked = open;
+    $("#de-ranges").innerHTML = rangesHTML(base);
+    $("#de-ranges").hidden = !open;
+    $("#de-warn").hidden = true;
+    $("[data-action=days-reset]").hidden = one ? !one.special : !infos.some((i) => i.special);
+    $("#day-editor").hidden = false;
+  }
+  $("#de-open").addEventListener("change", (e) => { $("#de-ranges").hidden = !e.target.checked; });
+
+  async function saveDays(reset) {
+    let ranges = null;
+    try { if (!reset) ranges = $("#de-open").checked ? readRanges($("#de-ranges")) : []; }
+    catch (err) { return toast(err.message); }
+    const days = [...selected].sort();
     try {
-      await api("/api/admin/blocks", { method: "POST", body: {
-        day: f.day.value, start: toMin(f.from.value), end: toMin(f.to.value), category: f.category.value || null, reason: f.reason.value } });
-      toast("Horario bloqueado");
-      agendaDay = f.day.value; f.reset(); go("agenda");
+      const r = await api("/api/admin/schedule/days", { method: "PUT", body: { category: schCategory, days, ranges } });
+      $("#day-editor").hidden = true;
+      selected.clear();
+      await renderSchedule();
+      if (r.outside.length) {
+        alert(`Atención: ${r.outside.length} cita(s) quedan fuera del nuevo horario y NO se cancelaron:\n\n` +
+          r.outside.map((b) => `• ${DOW[asDate(b.day).getDay()]} ${asDate(b.day).getDate()}, ${fmtTime(b.start)} — ${b.name}`).join("\n") +
+          `\n\nRevísalas en la Agenda para avisar al cliente o cancelarlas.`);
+      } else {
+        toast(reset ? "Horario semanal restablecido" : ranges.length ? "Días abiertos con ese horario" : "Días cerrados");
+      }
     } catch (err) { toast(err.message); }
-  });
+  }
+
+  function openWeekEditor() {
+    $("#we-days").innerHTML = WEEK_ORDER.map((wd) => {
+      const r = sched.week[wd] || [];
+      return `<div class="we-day" data-wd="${wd}">
+        <label class="switch-row"><span><strong>${DOW_LONG[wd]}</strong></span>
+          <input type="checkbox" class="switch" ${r.length ? "checked" : ""} /></label>
+        <div class="we-ranges" ${r.length ? "" : "hidden"}>${rangesHTML(r)}</div>
+      </div>`;
+    }).join("");
+    $$("#we-days .switch").forEach((sw) => sw.addEventListener("change", () => {
+      sw.closest(".we-day").querySelector(".we-ranges").hidden = !sw.checked;
+    }));
+    $("#week-editor").hidden = false;
+  }
+
+  async function saveWeek() {
+    const week = {};
+    try {
+      for (const el of $$("#we-days .we-day")) {
+        const wd = Number(el.dataset.wd);
+        week[wd] = el.querySelector(".switch").checked ? readRanges(el.querySelector(".ranges")) : [];
+        if (!week[wd].length && el.querySelector(".switch").checked) throw new Error("Revisa los turnos");
+      }
+    } catch (err) { return toast(err.message); }
+    try {
+      await api("/api/admin/schedule/week", { method: "PUT", body: { category: schCategory, week } });
+      $("#week-editor").hidden = true;
+      toast("Horario semanal guardado");
+      renderSchedule();
+    } catch (err) { toast(err.message); }
+  }
 
   function openNew() {
     const f = $("#new-form");
@@ -246,8 +413,6 @@
   async function start() {
     $("#login").hidden = true; $("#panel").hidden = false;
     try { C = await api("/api/config"); } catch (e) { return toast(e.message); }
-    $("#block-cat").innerHTML = `<option value="">Todo el negocio</option>` +
-      C.categories.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
     if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().catch(() => {});
     await refreshBadge();
     go(view);

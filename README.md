@@ -50,7 +50,11 @@ Se envían con [Resend](https://resend.com), cuyo plan gratis da 3000 correos al
 - **Pendientes:** las citas por confirmar, con un número rojo que avisa cuando entra una nueva. Se revisa cada 30 segundos.
 - **Agenda:** las citas por día. Desde aquí se marca a cada cliente como atendido, "no vino", cancelada, o se le manda un recordatorio por WhatsApp.
 - **+ Cita:** para agendar a quien llama o llega al local. Esa cita queda confirmada de una vez.
-- **Bloquear:** cierra horarios (almuerzo, vacaciones), para todo el negocio o solo para barbería o salón.
+- **Horario:** el barbero decide qué días y horas se trabaja, por separado para barbería y para salón.
+  - **Horario semanal:** el horario normal de cada día. Cada día puede estar cerrado o tener hasta 4 turnos, por ejemplo 9:00–12:00 y 14:00–19:00 para dejar el almuerzo libre.
+  - **Calendario:** se tocan uno o varios días y se **abren** con un horario, se **cierran** (vacaciones, feriados) o vuelven al horario semanal.
+  - **Sin horario fijo:** se cierran todos los días en el horario semanal y se abren solo los días que se trabaja.
+  - **Aviso de citas:** si un cambio deja citas fuera del horario, el panel avisa. Esas citas no se cancelan solas.
 
 ## Correr en tu computadora
 
@@ -96,7 +100,7 @@ Las variables están explicadas en `.env.example`. Importante: haz copias de seg
 
 ## Pendiente de confirmar con la barbería
 
-- **Horarios reales:** en `server/config.js`. Ahora dicen lunes a viernes de 9:00 a 19:00, sábado de 8:00 a 17:00 y domingo cerrado.
+- **Horarios reales:** se configuran desde el panel, en **Horario**. `server/config.js` solo trae el horario inicial: lunes a viernes de 9:00 a 19:00, sábado de 8:00 a 17:00 y domingo cerrado.
 - **Precios de Seimar Salón:** aparecen como "Consultar".
 - **Cuántos barberos atienden a la vez:** `capacity` en `server/config.js`. Ahora es 1.
 - **El logo real:** en lugar del monograma "VA" provisional.

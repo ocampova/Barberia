@@ -73,12 +73,13 @@
 
   /* ---------------- Inicio ---------------- */
   async function renderHome() {
-    const hours = B.hours[weekday(B.today)];
-    const now = B.nowMinutes;
-    const open = hours && now >= hours[0] && now < hours[1];
+    const s = B.status || {};
     const st = $("#open-status");
-    st.textContent = open ? `Abierto · cierra ${fmtTime(hours[1])}` : "Cerrado ahora";
-    st.classList.toggle("is-open", !!open);
+    st.textContent = s.open ? `Abierto · cierra ${fmtTime(s.closesAt)}`
+      : s.opensAt == null ? "Cerrado"
+      : s.opensDay === B.today ? `Cerrado · abre a las ${fmtTime(s.opensAt)}`
+      : `Cerrado · abre el ${DOW[weekday(s.opensDay)].toLowerCase()} ${asDate(s.opensDay).getDate()}`;
+    st.classList.toggle("is-open", !!s.open);
 
     $("#popular").innerHTML = SERVICES.filter((s) => s.popular).map(cardHTML).join("");
     $("#wa-link").href = `https://wa.me/${B.whatsapp}`;
@@ -243,7 +244,7 @@
       $("#days").innerHTML = days.map((d, i) => {
         const n = d.slots.length;
         const label = i === 0 ? "Hoy" : i === 1 ? "Mañana" : DOW[weekday(d.day)];
-        const sub = B.hours[weekday(d.day)] ? (n ? `${n} libres` : "Lleno") : "Cerrado";
+        const sub = d.open ? (n ? `${n} libres` : "Lleno") : "Cerrado";
         return `<button class="day ${d.day === state.day ? "is-active" : ""}" data-day="${d.day}" ${n ? "" : "disabled"}>
           <small>${label}</small><strong>${asDate(d.day).getDate()}</strong><i>${sub}</i></button>`;
       }).join("");

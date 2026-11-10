@@ -41,6 +41,7 @@ test("config pública no expone datos internos", async (t) => {
   assert.equal(r.body.today, "2026-11-09");
   assert.ok(r.body.services.length > 5);
   assert.equal(r.body.categories[0].capacity, undefined);
+  assert.equal(r.body.hours, undefined);
 });
 
 test("flujo completo: reservar, ver, el espacio desaparece, cancelar", async (t) => {
@@ -220,4 +221,61 @@ test("recordatorios: una sola vez, a citas confirmadas dentro de 24 horas", asyn
   await new Promise((ok) => setImmediate(ok));
   assert.match(mails[before].subject, /Recordatorio/);
   assert.match(mails[before].html, new RegExp(soon.id));
+});
+
+test("horario: abrir un domingo, cerrar un día, volver al semanal", async (t) => {
+  const { call } = await setup(t);
+  const { token } = (await call("POST", "/api/admin/login", { pin: "246810" })).body;
+  const avail = async (day) => (await call("GET", `/api/availability?services=corte&from=${day}&days=1`)).body.days[0];
+
+  // El domingo 15 está cerrado por el horario semanal inicial
+  assert.equal((await avail("2026-11-15")).open, false);
+  let r = await call("PUT", "/api/admin/schedule/days", { category: "barberia", days: ["2026-11-15"], ranges: [[600, 780]] }, token);
+  assert.equal(r.status, 200);
+  const sun = await avail("2026-11-15");
+  assert.equal(sun.open, true);
+  assert.equal(sun.slots[0], 600);
+  assert.equal(sun.slots.at(-1), 720); // 12:00 + 50 min cabe antes de la 1:00 p.m.
+
+  // Una cita el martes y luego se cierra ese día: avisa la cita afectada
+  const b = (await call("POST", "/api/bookings", booking())).body;
+  r = await call("PUT", "/api/admin/schedule/days", { category: "barberia", days: ["2026-11-10", "2026-11-11"], ranges: [] }, token);
+  assert.equal(r.body.outside.length, 1);
+  assert.equal(r.body.outside[0].id, b.id);
+  assert.equal((await avail("2026-11-11")).open, false);
+
+  // El salón no se ve afectado
+  const salon = (await call("GET", "/api/availability?services=color&from=2026-11-11&days=1")).body.days[0];
+  assert.equal(salon.open, true);
+
+  // Volver al horario semanal
+  await call("PUT", "/api/admin/schedule/days", { category: "barberia", days: ["2026-11-11"], ranges: null }, token);
+  assert.equal((await avail("2026-11-11")).open, true);
+
+  const sch = (await call("GET", "/api/admin/schedule?category=barberia&from=2026-11-09&to=2026-11-15", null, token)).body;
+  assert.equal(sch.days.length, 7);
+  assert.deepEqual(sch.days.find((d) => d.day === "2026-11-15"), { day: "2026-11-15", ranges: [[600, 780]], special: true, bookings: 0 });
+  assert.equal(sch.days.find((d) => d.day === "2026-11-10").bookings, 1);
+});
+
+test("horario semanal: solo días habilitados", async (t) => {
+  const { call } = await setup(t);
+  const { token } = (await call("POST", "/api/admin/login", { pin: "246810" })).body;
+  const week = { 0: [], 1: [], 2: [], 3: [], 4: [[540, 720], [840, 1080]], 5: [], 6: [] }; // solo jueves, con almuerzo
+  assert.equal((await call("PUT", "/api/admin/schedule/week", { category: "barberia", week }, token)).status, 200);
+  const days = (await call("GET", "/api/availability?services=corte&from=2026-11-09&days=7")).body.days;
+  assert.deepEqual(days.filter((d) => d.open).map((d) => d.day), ["2026-11-12"]);
+  const thu = days.find((d) => d.day === "2026-11-12").slots;
+  assert.ok(!thu.includes(720) && thu.includes(840));
+
+  assert.equal((await call("PUT", "/api/admin/schedule/week", { category: "barberia", week: { ...week, 1: [[600, 500]] } }, token)).status, 400);
+  assert.equal((await call("PUT", "/api/admin/schedule/days", { category: "nope", days: ["2026-11-12"], ranges: [] }, token)).status, 400);
+  assert.equal((await call("PUT", "/api/admin/schedule/week", { category: "barberia", week })).status, 401);
+});
+
+test("config pública: estado abierto/cerrado según el horario", async (t) => {
+  // lunes 9 de noviembre, 8:00 a.m.: abre a las 9:00
+  const { call } = await setup(t);
+  const st = (await call("GET", "/api/config")).body.status;
+  assert.deepEqual(st, { open: false, opensAt: 540, opensDay: "2026-11-09" });
 });

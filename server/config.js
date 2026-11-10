@@ -16,6 +16,8 @@ module.exports = {
   currency: "₡",
   timeZone: "America/Costa_Rica",
 
+  // Horario INICIAL: se copia a la base de datos la primera vez que arranca el servidor.
+  // Después el horario se administra desde el panel (/admin → Horario), no aquí.
   // 0 = domingo ... 6 = sábado. [apertura, cierre] en minutos desde medianoche.
   hours: {
     0: null,

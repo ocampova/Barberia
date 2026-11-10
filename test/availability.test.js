@@ -1,12 +1,12 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { freeSlots } = require("../server/availability");
+const { freeSlots, checkRanges } = require("../server/availability");
 const config = require("../server/config");
 
 // 2026-11-10 es martes: abre 9:00 a 19:00.
 const DAY = "2026-11-10";
-const base = { config, category: "barberia", day: DAY, bookings: [], blocks: [], now: { day: "2026-11-09", minutes: 600 } };
+const base = { config, category: "barberia", day: DAY, ranges: [[540, 1140]], bookings: [], blocks: [], now: { day: "2026-11-09", minutes: 600 } };
 
 test("día libre: horas cada 15 min donde cabe la cita completa", () => {
   const s = freeSlots({ ...base, minutes: 50 });
@@ -51,8 +51,8 @@ test("hoy: respeta la anticipación mínima", () => {
   assert.equal(s[0], 10 * 60 + 45); // 10:05 + 30 min → primera hora de 15 en 15 es 10:45
 });
 
-test("domingo cerrado, días pasados y fuera de rango vacíos", () => {
-  assert.deepEqual(freeSlots({ ...base, day: "2026-11-15", minutes: 50 }), []);
+test("día cerrado, días pasados y fuera de rango vacíos", () => {
+  assert.deepEqual(freeSlots({ ...base, ranges: [], minutes: 50 }), []);
   assert.deepEqual(freeSlots({ ...base, day: "2026-11-01", minutes: 50 }), []);
   assert.deepEqual(freeSlots({ ...base, day: "2027-01-10", minutes: 50 }), []);
 });
@@ -63,4 +63,23 @@ test("capacidad 2: se permiten dos citas a la vez", () => {
   assert.ok(freeSlots({ ...base, config: cfg, minutes: 50, bookings: one }).includes(600));
   const two = [...one, { category: "barberia", start: 600, minutes: 50, status: "confirmada" }];
   assert.ok(!freeSlots({ ...base, config: cfg, minutes: 50, bookings: two }).includes(600));
+});
+
+test("varios turnos: no se ofrecen horas que crucen el descanso", () => {
+  const s = freeSlots({ ...base, ranges: [[540, 720], [840, 1140]], minutes: 50 });
+  assert.ok(s.includes(660));   // 11:00–11:50 cabe en la mañana
+  assert.ok(!s.includes(675));  // 11:15–12:05 se pasa del primer turno
+  assert.ok(!s.includes(780));  // 13:00 es descanso
+  assert.ok(s.includes(840));   // 14:00 abre el segundo turno
+});
+
+test("validación de turnos", () => {
+  assert.equal(checkRanges([[540, 720], [840, 1140]]), null);
+  const r = [[840, 1140], [540, 720]]; checkRanges(r);
+  assert.deepEqual(r, [[540, 720], [840, 1140]]); // se ordenan
+  assert.ok(checkRanges([[540, 720], [700, 900]]));  // se cruzan
+  assert.ok(checkRanges([[720, 540]]));               // al revés
+  assert.ok(checkRanges([[541, 600]]));               // no va de 5 en 5
+  assert.ok(checkRanges("x"));
+  assert.equal(checkRanges([]), null);                // cerrado
 });
