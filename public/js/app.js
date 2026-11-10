@@ -312,7 +312,7 @@
     const svc = a.services.map((id) => byId(id).name).join(" + ");
     const msg = `Hola, soy ${fullName}. Acabo de reservar ${svc} para el ${longDate(a.day)} a las ${fmtTime(a.start)} (reserva ${a.id}).`;
     $("#ticket").innerHTML = `
-      <div class="monogram" aria-hidden="true">VA</div>
+      <img class="ticket__logo" src="img/victor-aguilar.svg" width="96" height="96" alt="" />
       <h2>Cita reservada</h2>
       <span class="ticket__state">Pendiente de confirmación</span>
       <p class="ticket__time">${fmtTime(a.start)}</p>

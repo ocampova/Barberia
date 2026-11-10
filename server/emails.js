@@ -80,6 +80,8 @@ function render(kind, b, config, { link = null, siteUrl = null, byClient = false
   const active = ["recibida", "confirmada", "recordatorio"].includes(kind);
   const button = active && link ? { href: link, label: "Ver o cancelar mi cita" }
     : !active && siteUrl ? { href: siteUrl, label: k.cta || "Reservar" } : null;
+  // Los correos no pueden mostrar SVG: se usa el PNG publicado por la app.
+  const logoUrl = siteUrl || (link ? new URL(link).origin : null) ? `${siteUrl || new URL(link).origin}/img/logos-email.png` : null;
   const gold = "#c9a227", bg = "#0b0a09", card = "#151311", line = "#2b2622", text = "#f3eee6", muted = "#a39a8e";
 
   const html = `<!doctype html>
@@ -90,11 +92,10 @@ function render(kind, b, config, { link = null, siteUrl = null, byClient = false
 <tr><td align="center" style="padding:28px 14px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;font-family:Helvetica,Arial,sans-serif;color:${text};">
   <tr><td align="center" style="padding:6px 0 22px;">
-    <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-      <td width="58" height="58" align="center" style="border:2px solid ${gold};border-radius:50%;background:#000;color:${gold};font:bold 20px Helvetica,Arial,sans-serif;letter-spacing:2px;">VA</td>
-    </tr></table>
-    <div style="margin-top:12px;font:bold 18px Helvetica,Arial,sans-serif;letter-spacing:3px;text-transform:uppercase;color:${text};">${esc(config.name)}</div>
-    <div style="margin-top:4px;font-size:11px;letter-spacing:4px;text-transform:uppercase;color:${gold};">${esc(config.tagline)}</div>
+    ${logoUrl
+      ? `<img src="${esc(logoUrl)}" width="300" height="132" alt="${esc(config.name)} Barbería · ${esc(config.partner)}" style="display:block;width:300px;max-width:80%;height:auto;border:0;">`
+      : `<div style="font:bold 18px Helvetica,Arial,sans-serif;letter-spacing:3px;text-transform:uppercase;color:${text};">${esc(config.name)}</div>
+    <div style="margin-top:4px;font-size:11px;letter-spacing:4px;text-transform:uppercase;color:${gold};">${esc(config.tagline)}</div>`}
   </td></tr>
   <tr><td style="background:${card};border:1px solid ${gold};border-radius:18px;padding:30px 24px;">
     <div style="text-align:center;">

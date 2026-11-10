@@ -257,3 +257,7 @@ a { color: inherit; text-decoration: none; }
 .appt__tag--rechazada, .appt__tag--cancelada, .appt__tag--no-asistio { color: var(--danger); }
 .ticket__mail { margin: -8px 0 22px; font-size: 13px; color: var(--muted); }
 .ticket__mail strong { color: var(--text); font-weight: 500; word-break: break-all; }
+
+/* Logos */
+.brand-logos { display: block; height: 92px; width: auto; max-width: 100%; margin-left: -6px; }
+.ticket__logo { display: block; width: 96px; height: 96px; margin: 0 auto 14px; }
