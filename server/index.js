@@ -16,6 +16,12 @@ if (!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM)
 if (!process.env.PUBLIC_URL)
   console.warn("⚠  Sin PUBLIC_URL: los recordatorios por correo no incluirán el enlace a la cita.");
 
+// Resumen de configuración (sin valores secretos), útil para revisar los registros del hosting.
+const yesNo = (v) => (v ? "sí" : "no");
+console.log(`Configuración → base de datos: ${DB_FILE} · ADMIN_EMAIL: ${yesNo(process.env.ADMIN_EMAIL)} · ` +
+  `ADMIN_PASSWORD: ${yesNo(process.env.ADMIN_PASSWORD)} · TRUST_PROXY: ${yesNo(process.env.TRUST_PROXY)} · ` +
+  `PUBLIC_URL: ${process.env.PUBLIC_URL || "no"} · correos: ${yesNo(process.env.RESEND_API_KEY && process.env.EMAIL_FROM)}`);
+if (process.env.ADMIN_FORCE === "1") console.warn("⚠  ADMIN_FORCE está activo: bórralo apenas puedas entrar al panel.");
 const db = openDb(DB_FILE);
 const handler = createApp({ repo: repo(db), config });
 const server = http.createServer(handler).listen(PORT, () => {

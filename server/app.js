@@ -205,22 +205,34 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
 
   /* ---------- Primer administrador ---------- */
   // Con ADMIN_EMAIL y ADMIN_PASSWORD, al arrancar se crea esa cuenta de administrador si no existe.
-  // Nunca se promueve una cuenta que ya existía: alguien pudo registrarla antes con ese correo.
-  if (env.ADMIN_EMAIL) {
+  // Nunca se promueve una cuenta que ya existía (alguien pudo registrarla antes con ese correo),
+  // salvo con ADMIN_FORCE=1: recuperación explícita desde el hosting, que además fija la contraseña.
+  if (!env.ADMIN_EMAIL) {
+    if (!repo.admins().length) console.warn("⚠  No hay administradores y falta ADMIN_EMAIL: nadie puede entrar al panel.");
+  } else {
     const email = String(env.ADMIN_EMAIL).trim().toLowerCase();
+    const password = String(env.ADMIN_PASSWORD || "");
+    const force = env.ADMIN_FORCE === "1";
     const existing = repo.userByEmail(email);
-    if (existing && existing.role !== "admin") {
+    if (password && password.length < 8) {
+      console.warn("⚠  ADMIN_PASSWORD es muy corta (mínimo 8 caracteres): no se usó.");
+    } else if (existing && force && password) {
+      repo.userSetRole(existing.id, "admin");
+      repo.userSetPass(existing.id, hashPassword(password));
+      repo.sessionDeleteOthers(existing.id, "");
+      console.log(`ADMIN_FORCE: ${email} es administrador y su contraseña es ADMIN_PASSWORD. Borra ADMIN_FORCE ahora.`);
+    } else if (existing && existing.role !== "admin") {
       console.warn(`⚠  ${email} ya tiene una cuenta de cliente: no se convirtió en administrador. ` +
-        "Dale acceso desde el panel (Equipo) con otra cuenta de administrador o con: npm run admin -- " + email);
-    } else if (!existing) {
-      if (!env.ADMIN_PASSWORD || String(env.ADMIN_PASSWORD).length < 8) {
-        console.warn("⚠  ADMIN_EMAIL sin ADMIN_PASSWORD (mínimo 8 caracteres): no se creó el administrador.");
-      } else {
-        const id = repo.userInsert({ name: env.ADMIN_NAME || config.name, phone: cleanPhoneRaw(env.ADMIN_PHONE),
-          email, pass_hash: hashPassword(String(env.ADMIN_PASSWORD)) });
-        repo.userSetRole(id, "admin");
-        console.log(`Administrador creado: ${email}. Cambia la contraseña desde el perfil después de entrar.`);
-      }
+        "Para hacerlo, agrega ADMIN_FORCE=1 (y bórrala después) o usa: npm run admin -- " + email);
+    } else if (existing) {
+      console.log(`Administrador ${email}: la cuenta ya existe (su contraseña se cambia desde el perfil, no con ADMIN_PASSWORD).`);
+    } else if (!password) {
+      console.warn("⚠  ADMIN_EMAIL sin ADMIN_PASSWORD: no se creó el administrador.");
+    } else {
+      const id = repo.userInsert({ name: env.ADMIN_NAME || config.name, phone: cleanPhoneRaw(env.ADMIN_PHONE),
+        email, pass_hash: hashPassword(password) });
+      repo.userSetRole(id, "admin");
+      console.log(`Administrador creado: ${email}. Cambia la contraseña desde el perfil después de entrar.`);
     }
   }
   function cleanPhoneRaw(v) {

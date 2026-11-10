@@ -286,6 +286,20 @@ test("primer administrador: se crea con ADMIN_EMAIL, nunca promueve una cuenta e
   assert.equal(shared.userByEmail("jefe@example.com").role, "cliente");
 });
 
+test("ADMIN_FORCE: recupera el acceso de una cuenta existente", async () => {
+  const { openDb, repo: mkRepo } = require("../server/db");
+  const shared = mkRepo(openDb(":memory:"));
+  shared.userInsert({ name: "Dueño", phone: "50680000001", email: "jefe@example.com", pass_hash: "x" });
+  const mk = (env) => createApp({ repo: shared, config, clock, mailer: { enabled: false, send() {} },
+    env: { ADMIN_EMAIL: "jefe@example.com", ADMIN_PASSWORD: "nueva-clave-99", ...env } });
+  mk({});
+  assert.equal(shared.userByEmail("jefe@example.com").role, "cliente"); // sin ADMIN_FORCE no cambia
+  mk({ ADMIN_FORCE: "1" });
+  const u = shared.userByEmail("jefe@example.com");
+  assert.equal(u.role, "admin");
+  assert.ok(require("../server/auth").verifyPassword("nueva-clave-99", u.pass_hash));
+});
+
 test("límite de intentos de inicio de sesión", async (t) => {
   const { browser } = await setup(t, { LOGIN_RATE_LIMIT: "5" });
   const c = browser();

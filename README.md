@@ -93,7 +93,10 @@ npm test             # pruebas automáticas
 | `ADMIN_PHONE` | teléfono del administrador |
 | `TRUST_PROXY` | `1` |
 | `RAILWAY_RUN_UID` | `0` (el volumen de Railway se monta como root) |
+| `ADMIN_FORCE` | Solo para recuperar el acceso: con `1`, al arrancar deja la cuenta de `ADMIN_EMAIL` como administradora con la contraseña `ADMIN_PASSWORD`. **Bórrala después de entrar.** |
 | `PUBLIC_URL` | `https://victoraguilar.elcorte.app` (cuando el dominio esté conectado) |
+
+Al arrancar, los registros (**Deployments → View logs**) muestran un resumen: si ve `ADMIN_EMAIL`, `TRUST_PROXY`, la ruta de la base de datos y si se creó el administrador.
 
 4. **Settings → Networking → Generate Domain** para probar con una dirección `*.up.railway.app`, y luego **Custom Domain** para conectar el dominio propio.
 
