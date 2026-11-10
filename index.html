@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0a09" />
+  <title>Víctor Aguilar Barbería · Reservas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Playfair+Display:ital,wght@1,600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- INICIO -->
+    <section class="view" id="view-home" data-view="home">
+      <header class="hero">
+        <div class="hero__glow" aria-hidden="true"></div>
+        <div class="brand">
+          <div class="monogram" aria-hidden="true">VA</div>
+          <div>
+            <p class="brand__name">Víctor Aguilar</p>
+            <p class="brand__sub">Barbería · Since 2016</p>
+          </div>
+        </div>
+        <h1 class="hero__title">Tu estilo,<br /><em>nuestra prioridad</em></h1>
+        <p class="hero__meta">
+          <span class="status" id="open-status"></span>
+          <span>San Roque de Grecia</span>
+        </p>
+        <button class="btn btn--gold btn--block" data-action="start-booking">Reservar cita</button>
+      </header>
+
+      <div class="section">
+        <div class="section__head">
+          <h2>Espacios para hoy</h2>
+          <span class="pill" id="today-count"></span>
+        </div>
+        <div class="slot-row" id="today-slots"></div>
+      </div>
+
+      <div class="section">
+        <div class="section__head">
+          <h2>Los más pedidos</h2>
+          <button class="link" data-goto="services">Ver todos</button>
+        </div>
+        <div class="cards" id="popular"></div>
+      </div>
+
+      <div class="section">
+        <div class="info">
+          <a class="info__item" id="wa-link" target="_blank" rel="noopener">
+            <span class="ico ico--wa" aria-hidden="true"></span>
+            <span><strong>WhatsApp</strong><small id="phone-label"></small></span>
+          </a>
+          <a class="info__item" target="_blank" rel="noopener"
+             href="https://maps.google.com/?q=San+Roque+de+Grecia,+Alajuela">
+            <span class="ico ico--pin" aria-hidden="true"></span>
+            <span><strong>Cómo llegar</strong><small>San Roque de Grecia, Alajuela</small></span>
+          </a>
+        </div>
+        <p class="slogan">Más que una barbería, un club de amigos</p>
+      </div>
+    </section>
+
+    <!-- SERVICIOS -->
+    <section class="view" id="view-services" data-view="services" hidden>
+      <header class="topbar"><h1>Servicios</h1></header>
+      <div class="search">
+        <input type="search" id="search" placeholder="Buscar servicio" autocomplete="off" />
+      </div>
+      <div class="chips" id="cat-chips" role="tablist"></div>
+      <div class="list" id="service-list"></div>
+    </section>
+
+    <!-- MIS CITAS -->
+    <section class="view" id="view-appointments" data-view="appointments" hidden>
+      <header class="topbar"><h1>Mis citas</h1></header>
+      <div class="list" id="appt-list"></div>
+    </section>
+
+    <!-- BARRA INFERIOR -->
+    <nav class="tabbar" aria-label="Navegación">
+      <button class="tab is-active" data-goto="home"><span class="ico ico--home"></span>Inicio</button>
+      <button class="tab" data-goto="services"><span class="ico ico--list"></span>Servicios</button>
+      <button class="tab" data-goto="appointments"><span class="ico ico--cal"></span>Mis citas</button>
+    </nav>
+
+    <!-- CARRITO FLOTANTE -->
+    <div class="cartbar" id="cartbar" hidden>
+      <div>
+        <strong id="cart-count"></strong>
+        <small id="cart-total"></small>
+      </div>
+      <button class="btn btn--gold" data-action="start-booking">Elegir hora</button>
+    </div>
+
+    <!-- FLUJO DE RESERVA -->
+    <div class="flow" id="flow" hidden role="dialog" aria-modal="true" aria-labelledby="flow-title">
+      <header class="flow__head">
+        <button class="iconbtn" data-action="flow-back" aria-label="Atrás">‹</button>
+        <div class="steps" id="steps">
+          <span class="step" data-step="1"></span>
+          <span class="step" data-step="2"></span>
+          <span class="step" data-step="3"></span>
+        </div>
+        <button class="iconbtn" data-action="flow-close" aria-label="Cerrar">×</button>
+      </header>
+      <div class="flow__body">
+        <!-- Paso 1 -->
+        <div class="pane" data-pane="1">
+          <h2 id="flow-title" class="pane__title">¿Qué te hacemos?</h2>
+          <p class="pane__sub">Puedes elegir más de un servicio.</p>
+          <div class="list" id="flow-services"></div>
+        </div>
+        <!-- Paso 2 -->
+        <div class="pane" data-pane="2" hidden>
+          <h2 class="pane__title">Elige día y hora</h2>
+          <p class="pane__sub" id="duration-note"></p>
+          <div class="days" id="days"></div>
+          <div id="slots"></div>
+        </div>
+        <!-- Paso 3 -->
+        <div class="pane" data-pane="3" hidden>
+          <h2 class="pane__title">Tus datos</h2>
+          <p class="pane__sub">Sin cuentas ni contraseñas. Solo para confirmarte por WhatsApp.</p>
+          <form id="details" novalidate>
+            <label class="field">
+              <span>Nombre</span>
+              <input name="name" autocomplete="name" required placeholder="¿Cómo te llamas?" />
+            </label>
+            <label class="field">
+              <span>Teléfono</span>
+              <input name="phone" type="tel" inputmode="numeric" autocomplete="tel" required placeholder="8888 8888" />
+            </label>
+            <label class="field">
+              <span>Nota (opcional)</span>
+              <textarea name="note" rows="2" placeholder="Ej: degradado bajo, mantener largo arriba"></textarea>
+            </label>
+          </form>
+          <div class="summary" id="summary"></div>
+          <details class="policy">
+            <summary>Políticas de la barbería</summary>
+            <ul id="policy-list"></ul>
+          </details>
+        </div>
+        <!-- Confirmación -->
+        <div class="pane" data-pane="done" hidden>
+          <div class="ticket" id="ticket"></div>
+        </div>
+      </div>
+      <footer class="flow__foot" id="flow-foot">
+        <div class="flow__total">
+          <small id="foot-label">Total</small>
+          <strong id="foot-total"></strong>
+        </div>
+        <button class="btn btn--gold" id="flow-next" data-action="flow-next">Continuar</button>
+      </footer>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </div>
+
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
