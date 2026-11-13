@@ -158,7 +158,8 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     if (!u) throw new HttpError(401, "Inicia sesión para continuar.");
     return u;
   }
-  const publicUser = (u) => ({ id: u.id, name: u.name, phone: u.phone, email: u.email, since: u.created_at, admin: u.role === "admin" });
+  const publicUser = (u) => ({ id: u.id, name: u.name, phone: u.phone, email: u.email, since: u.created_at,
+    admin: u.role === "admin", ...(u.role === "admin" ? { agenda: u.agenda || "" } : {}) });
   function requireAdmin(req) {
     const u = currentUser(req);
     if (!u) throw new HttpError(401, "Inicia sesión para continuar.");
@@ -257,7 +258,8 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
       slotStepMinutes, daysAhead, policies, categories } = config;
     const all = repo.services();
     return { name, tagline, partner, slogan, location, mapsUrl, phone, whatsapp, currency,
-      slotStepMinutes, daysAhead, policies, categories: categories.map(({ id, name }) => ({ id, name })),
+      slotStepMinutes, daysAhead, policies,
+      categories: categories.map(({ id, name, staff, brand, place }) => ({ id, name, staff: staff || null, brand: brand || name, place: place || null })),
       status: openStatus(categories[0].id),
       services: all.filter((x) => x.active).map(toPublicService),
       retired: all.filter((x) => !x.active).map(({ id, name }) => ({ id, name })),
@@ -482,6 +484,17 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     return { status: 201, body: { admins: repo.admins() } };
   }, { admin: true });
 
+  // Asignar la agenda que atiende cada persona del equipo ('' = todas).
+  route("PUT", "/api/admin/team/:id", ({ params, body }) => {
+    const id = Number(params.id);
+    const u = repo.userById(id);
+    if (!u || u.role !== "admin") throw new HttpError(404, "Esa cuenta no es administradora.");
+    const agenda = String(body.agenda || "");
+    if (agenda && !categoryIds.has(agenda)) throw new HttpError(400, "Agenda inválida.");
+    repo.userSetAgenda(id, agenda);
+    return { admins: repo.admins() };
+  }, { admin: true });
+
   route("DELETE", "/api/admin/team/:id", ({ params, req }) => {
     const me = requireAdmin(req);
     const id = Number(params.id);
@@ -494,7 +507,8 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
   }, { admin: true });
 
   route("GET", "/api/admin/summary", () => ({
-    pending: repo.pendingCount(now().day), today: now().day, emailEnabled: mail.enabled !== false,
+    pending: repo.pendingCount(now().day), pendingBy: repo.pendingByCategory(now().day),
+    today: now().day, emailEnabled: mail.enabled !== false,
   }), { admin: true });
 
   route("GET", "/api/admin/bookings", ({ query }) => {

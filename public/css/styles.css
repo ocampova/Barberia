@@ -316,3 +316,9 @@ a { color: inherit; text-decoration: none; }
 .field select { width: 100%; padding: 14px 16px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); color: var(--text); font: inherit; }
 .legal { text-align: center; margin: 0 0 12px; font-size: 12px; }
 .legal a { color: var(--muted); text-decoration: underline; }
+
+/* ---------- Profesionales ---------- */
+.cat-staff { margin: 2px 20px 0; color: var(--gold-2); font-size: 13px; min-height: 0; }
+.cat-staff:empty { display: none; }
+.group__staff { color: var(--muted); text-transform: none; letter-spacing: 0; font-family: var(--body); font-weight: 500; }
+.ticket__staff { color: var(--gold-2); font-size: 13px; }

@@ -13,17 +13,17 @@ const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 const KINDS = {
   recibida: {
-    subject: (b, c) => `Recibimos tu solicitud de cita · ${c.name} Barbería`,
+    subject: (b) => `Recibimos tu solicitud de cita · ${b.brand}`,
     badge: "Pendiente de confirmación",
     title: (b) => `¡Hola ${b.first}!`,
-    lead: () => "Recibimos tu solicitud. La barbería la revisará y te avisaremos por este medio cuando quede confirmada.",
+    lead: (b) => `Recibimos tu solicitud. ${cap(b.place)} la revisará y te avisaremos por este medio cuando quede confirmada.`,
     calendar: false,
   },
   confirmada: {
-    subject: (b, c) => `Tu cita en ${c.name} Barbería está confirmada`,
+    subject: (b) => `Tu cita en ${b.brand} está confirmada`,
     badge: "Cita confirmada",
     title: (b) => `¡Hola ${b.first}!`,
-    lead: () => "Tu cita fue aprobada por la barbería. Te esperamos. Si no puedes llegar, avísanos para liberar el espacio.",
+    lead: (b) => `Tu cita fue aprobada por ${b.place}. Te esperamos. Si no puedes llegar, avísanos para liberar el espacio.`,
     calendar: true,
   },
   recordatorio: {
@@ -34,15 +34,15 @@ const KINDS = {
     calendar: false,
   },
   rechazada: {
-    subject: (b, c) => `No pudimos confirmar tu cita · ${c.name} Barbería`,
+    subject: (b) => `No pudimos confirmar tu cita · ${b.brand}`,
     badge: "No disponible",
     title: (b) => `Hola ${b.first},`,
-    lead: () => "Lo sentimos, la barbería no puede atenderte en ese horario. Puedes reservar otro espacio cuando gustes.",
+    lead: (b) => `Lo sentimos, ${b.place} no puede atenderte en ese horario. Puedes reservar otro espacio cuando gustes.`,
     calendar: false,
     cta: "Reservar otro horario",
   },
   cancelada: {
-    subject: (b, c) => `Tu cita fue cancelada · ${c.name} Barbería`,
+    subject: (b) => `Tu cita fue cancelada · ${b.brand}`,
     badge: "Cita cancelada",
     title: (b) => `Hola ${b.first},`,
     lead: (b) => b.byClient
@@ -67,6 +67,8 @@ function render(kind, b, config, { link = null, siteUrl = null, byClient = false
     first: b.name.split(" ")[0],
     whenShort: `${longDate(b.day).split(",")[0]} a las ${fmtTime(b.start)}`,
     byClient,
+    brand: (cat && cat.brand) || `${config.name} Barbería`,
+    place: (cat && cat.place) || "la barbería",
   };
   const total = b.total == null ? "Por confirmar" : config.currency + b.total.toLocaleString("es-CR");
   const rows = [
@@ -133,14 +135,14 @@ function render(kind, b, config, { link = null, siteUrl = null, byClient = false
   ].join("\n");
 
   const attachments = k.calendar
-    ? [{ filename: "cita.ics", content: Buffer.from(ics(b, config, svc)).toString("base64") }]
+    ? [{ filename: "cita.ics", content: Buffer.from(ics(b, config, svc, ctx.brand)).toString("base64") }]
     : undefined;
 
   return { subject: k.subject(ctx, config), html, text: textBody, attachments };
 }
 
 // Invitación de calendario (.ics). Costa Rica no tiene horario de verano: UTC-6 todo el año.
-function ics(b, config, svcNames) {
+function ics(b, config, svcNames, brand = `${config.name} Barbería`) {
   const pad = (n) => String(n).padStart(2, "0");
   const toUtc = (min) => {
     const d = new Date(`${b.day}T00:00:00-06:00`);
@@ -154,7 +156,7 @@ function ics(b, config, svcNames) {
     "BEGIN:VEVENT",
     `UID:${b.id}@barberia`, `DTSTAMP:${now}`,
     `DTSTART:${toUtc(b.start)}`, `DTEND:${toUtc(b.start + b.minutes)}`,
-    `SUMMARY:${fold(`${svcNames.join(" + ")} · ${config.name} Barbería`)}`,
+    `SUMMARY:${fold(`${svcNames.join(" + ")} · ${brand}`)}`,
     `LOCATION:${fold(config.location)}`,
     `DESCRIPTION:${fold(`Reserva ${b.id}. WhatsApp: ${config.phone}`)}`,
     "BEGIN:VALARM", "TRIGGER:-PT2H", "ACTION:DISPLAY", "DESCRIPTION:Cita en la barbería", "END:VALARM",

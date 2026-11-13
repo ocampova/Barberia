@@ -6,6 +6,7 @@
 
   let C; // configuración del negocio
   let ME = null; // administrador con sesión
+  let agendaFilter = ""; // "" = todas las agendas; si no, id de la categoría
   let view = "pending";
   let agendaDay;
   let lastPending = null;
@@ -112,8 +113,19 @@
       $("#team-list").innerHTML = admins.map((a) => `<div class="team-row">
           <div><strong>${esc(a.name)}${a.id === ME.id ? ' <span class="tag tag--gold">Tú</span>' : ""}</strong>
             <small>${esc(a.email)}</small></div>
+          <select class="team-agenda" data-team-agenda="${a.id}" aria-label="Agenda que atiende ${esc(a.name)}">
+            <option value="">Todas las agendas</option>
+            ${C.categories.map((c) => `<option value="${c.id}" ${a.agenda === c.id ? "selected" : ""}>${esc(catLabel(c.id))}</option>`).join("")}
+          </select>
           ${a.id === ME.id ? "" : `<button class="btn btn--ghost adm-small" data-team-remove="${a.id}" data-team-name="${esc(a.name)}">Quitar</button>`}
         </div>`).join("");
+      $$("[data-team-agenda]").forEach((sel) => sel.addEventListener("change", async () => {
+        try {
+          await api(`/api/admin/team/${sel.dataset.teamAgenda}`, { method: "PUT", body: { agenda: sel.value } });
+          if (Number(sel.dataset.teamAgenda) === ME.id) { ME.agenda = sel.value; agendaFilter = sel.value; saveFilter(); go(view); }
+          toast("Agenda asignada");
+        } catch (err) { toast(err.message); }
+      }));
     } catch (err) { toast(err.message); }
   }
   $("#team-form").addEventListener("submit", async (e) => {
@@ -129,10 +141,13 @@
     if (!b.phone) return null;
     const first = b.name.split(" ")[0];
     const when = `el ${longDate(b.day)} a las ${fmtTime(b.start)}`;
+    const cat = C.categories.find((c) => c.id === b.category) || {};
+    const brand = cat.brand || `${C.name} Barbería`;
+    const withStaff = cat.staff ? ` con ${cat.staff}` : "";
     const text = {
-      confirmada: `¡Hola ${first}! Tu cita en ${C.name} Barbería para ${svcNames(b.services)} quedó CONFIRMADA ${when} ¡Te esperamos! 💈`,
+      confirmada: `¡Hola ${first}! Tu cita en ${brand} para ${svcNames(b.services)}${withStaff} quedó CONFIRMADA ${when} ¡Te esperamos! 💈`,
       rechazada: `Hola ${first}, lamentablemente no podemos atenderte ${when} ¿Te sirve otro horario? Puedes reservar de nuevo en la app.`,
-      recordatorio: `¡Hola ${first}! Te recordamos tu cita en ${C.name} Barbería ${when} ¡Te esperamos!`,
+      recordatorio: `¡Hola ${first}! Te recordamos tu cita en ${brand}${withStaff} ${when} ¡Te esperamos!`,
       cancelada: `Hola ${first}, tuvimos que cancelar tu cita ${when} Disculpa las molestias, reserva otro espacio cuando gustes.`,
     }[kind] || "";
     return `https://wa.me/${b.phone}?text=${encodeURIComponent(text)}`;
@@ -141,7 +156,8 @@
   /* ---------- Pendientes ---------- */
   async function renderPending() {
     const el = $("#pending-list");
-    const { bookings } = await api(`/api/admin/bookings?from=${C.today}&to=${addDays(C.today, C.daysAhead + 1)}&status=pendiente`);
+    const { bookings: all } = await api(`/api/admin/bookings?from=${C.today}&to=${addDays(C.today, C.daysAhead + 1)}&status=pendiente`);
+    const bookings = all.filter(inFilter);
     el.innerHTML = bookings.length
       ? bookings.map((b) => bookingHTML(b, true)).join("")
       : `<p class="empty-state">No hay citas por confirmar. 👌</p>`;
@@ -169,7 +185,7 @@
         <span class="bk__time">${showDate ? DOW[asDate(b.day).getDay()] + " " + asDate(b.day).getDate() + " · " : ""}${fmtTime(b.start)} – ${fmtTime(b.start + b.minutes)}</span>
         <span class="bk__status bk__status--${b.status}">${STATUS[b.status]}</span>
       </div>
-      <p class="bk__name">${esc(b.name)}</p>
+      <p class="bk__name">${esc(b.name)}${!agendaFilter ? ` <span class="tag tag--cat">${esc(catLabel(b.category))}</span>` : ""}</p>
       <p class="bk__meta">${esc(svcNames(b.services))} · ${fmtMoney(b.total)}</p>
       <p class="bk__meta">${phone}${b.source === "panel" ? " · agregada en el panel" : ""}</p>
       ${b.email ? `<p class="bk__meta">✉ ${esc(b.email)}</p>` : ""}
@@ -194,7 +210,9 @@
     requestAnimationFrame(() => $(".adm-days .is-active")?.scrollIntoView({ inline: "center", block: "nearest" }));
     $("#adm-dayname").textContent = longDate(agendaDay);
 
-    const { bookings, blocks } = await api(`/api/admin/bookings?from=${agendaDay}&to=${agendaDay}`);
+    const day = await api(`/api/admin/bookings?from=${agendaDay}&to=${agendaDay}`);
+    const bookings = day.bookings.filter(inFilter);
+    const blocks = day.blocks.filter((k) => !agendaFilter || !k.category || k.category === agendaFilter);
     const items = [
       ...bookings.map((b) => ({ t: b.start, html: bookingHTML(b, false) })),
       ...blocks.map((k) => ({ t: k.start, html: `<article class="bk bk--block">
@@ -202,7 +220,7 @@
         <p class="bk__meta">${esc(k.reason || "Sin motivo")} · ${k.category ? esc(C.categories.find((c) => c.id === k.category)?.name) : "Todo el negocio"}</p>
         <div class="bk__actions"><button class="btn btn--ghost" data-unblock="${k.id}">Quitar bloqueo</button></div></article>` })),
     ].sort((a, b) => a.t - b.t);
-    const hoursLine = C.categories.map((c) => {
+    const hoursLine = C.categories.filter((c) => !agendaFilter || c.id === agendaFilter).map((c) => {
       const r = sched[c.id][agendaDay] || [];
       return `${esc(c.name)}: ${r.length ? rangesText(r) : "cerrado"}`;
     }).join(" · ");
@@ -213,6 +231,7 @@
   /* ---------- Navegación ---------- */
   async function go(v) {
     view = v;
+    renderAgendaFilter();
     $$("#panel .view").forEach((el) => (el.hidden = el.dataset.view !== v));
     $$(".tab").forEach((t) => t.classList.toggle("is-active", t.dataset.goto === v));
     window.scrollTo(0, 0);
@@ -227,7 +246,8 @@
 
   async function refreshBadge() {
     try {
-      const { pending, today, emailEnabled: mailOn } = await api("/api/admin/summary");
+      const { pending: total, pendingBy = {}, today, emailEnabled: mailOn } = await api("/api/admin/summary");
+      const pending = agendaFilter ? (pendingBy[agendaFilter] || 0) : total;
       C.today = today; emailEnabled = mailOn;
       $("#new-email").hidden = !mailOn;
       const badge = $("#badge");
@@ -307,6 +327,12 @@
     if (ds.schcat) { schCategory = ds.schcat; selected.clear(); return renderSchedule(); }
     if (ds.svcEdit) return openSvcEditor(ds.svcEdit);
     if (ds.srcDays !== undefined) return renderSources(Number(ds.srcDays));
+    if (ds.agendaFilter !== undefined) {
+      agendaFilter = ds.agendaFilter; saveFilter();
+      if (agendaFilter) schCategory = agendaFilter;
+      refreshBadge();
+      return go(view);
+    }
     if (ds.teamRemove) {
       if (!confirm(`¿Quitarle el acceso al panel a ${ds.teamName}? Su cuenta de cliente sigue activa.`)) return;
       try { await api(`/api/admin/team/${ds.teamRemove}`, { method: "DELETE" }); toast("Acceso quitado"); renderTeam(); }
@@ -315,6 +341,22 @@
     }
     if (ds.svcMove) return moveSvc(ds.svcId, Number(ds.svcMove));
   });
+
+  /* ---------- Filtro por agenda ---------- */
+  const catLabel = (id) => {
+    const c = C.categories.find((x) => x.id === id) || {};
+    return c.staff ? `${c.name} · ${c.staff.split(" ")[0]}` : (c.name || id);
+  };
+  const inFilter = (b) => !agendaFilter || b.category === agendaFilter;
+  function saveFilter() { try { localStorage.setItem("va-agenda-filter", agendaFilter); } catch {} }
+  function renderAgendaFilter() {
+    const el = $("#agenda-filter");
+    el.hidden = !["pending", "agenda"].includes(view);
+    if (el.hidden || !C) return;
+    el.innerHTML = [`<button type="button" data-agenda-filter="" class="${agendaFilter === "" ? "is-active" : ""}">Todas</button>`]
+      .concat(C.categories.map((c) => `<button type="button" data-agenda-filter="${c.id}" class="${agendaFilter === c.id ? "is-active" : ""}" title="${esc(catLabel(c.id))}">${esc(c.staff ? c.staff.split(" ")[0] : c.name)}</button>`))
+      .join("");
+  }
 
   /* ---------- Servicios ---------- */
   let svcList = [];
@@ -603,6 +645,10 @@
     } catch (e) { return toast(e.message); }
     $("#login").hidden = true; $("#panel").hidden = false;
     $("#me-name").textContent = ME.name.split(" ")[0];
+    let saved = null;
+    try { saved = localStorage.getItem("va-agenda-filter"); } catch {}
+    agendaFilter = saved !== null && (saved === "" || C.categories.some((c) => c.id === saved)) ? saved : (ME.agenda || "");
+    if (agendaFilter) schCategory = agendaFilter;
     if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().catch(() => {});
     await refreshBadge();
     go(view);

@@ -8,6 +8,8 @@
   let B, SERVICES, CATEGORIES, RETIRED = [];
   let USER = null; // cliente con sesión iniciada, o null
   const byId = (id) => SERVICES.find((s) => s.id === id);
+  const catOf = (id) => CATEGORIES.find((c) => c.id === id) || {};
+  const staffLine = (catId) => (catOf(catId).staff ? `con ${catOf(catId).staff}` : "");
   const svcName = (id) => byId(id)?.name || RETIRED.find((s) => s.id === id)?.name || "Servicio";
 
   const DOW = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
@@ -134,6 +136,8 @@
     $("#cat-chips").innerHTML = CATEGORIES.map((c) =>
       `<button class="chip ${c.id === state.category ? "is-active" : ""}" data-cat="${c.id}" role="tab">${esc(c.name)}</button>`
     ).join("");
+    const cur = catOf(state.category);
+    $("#cat-staff").textContent = !state.query.trim() && cur.staff ? `Te atiende ${cur.staff}` : "";
     const q = state.query.trim().toLowerCase();
     const list = SERVICES.filter((s) => (q ? s.name.toLowerCase().includes(q) : s.cat === state.category));
     $("#service-list").innerHTML = list.length
@@ -192,7 +196,7 @@
           <span class="appt__when">${DOW[d.getDay()]} ${d.getDate()} ${d.toLocaleDateString("es-CR", { month: "short" })} · ${fmtTime(a.start)}</span>
           <span class="appt__tag appt__tag--${a.status}">${STATUS_LABEL[a.status] || a.status}</span>
         </div>
-        <p class="appt__svc">${a.services.map((id) => esc(svcName(id))).join(" + ")} · ${fmtMoney(a.total)}</p>
+        <p class="appt__svc">${a.services.map((id) => esc(svcName(id))).join(" + ")} · ${fmtMoney(a.total)}${staffLine(a.category) ? ` · ${esc(staffLine(a.category))}` : ""}</p>
         ${a.note ? `<p class="appt__note">“${esc(a.note)}”</p>` : ""}
         <div class="appt__actions">
           ${active ? `<a class="btn btn--ghost" href="${calendarLink(a)}" target="_blank" rel="noopener">Agregar al calendario</a>
@@ -272,7 +276,7 @@
   /* ---------------- Sesión ---------------- */
   let afterAuth = null; // qué hacer al terminar de iniciar sesión
   const AUTH_TEXT = {
-    login: ["Bienvenido de nuevo", "Inicia sesión para reservar y ver tus citas."],
+    login: ["Hola de nuevo", "Inicia sesión para reservar y ver tus citas."],
     register: ["Crea tu cuenta", "Solo toma un minuto. Así reservas más rápido y ves tu historial."],
     forgot: ["¿Olvidaste tu contraseña?", "Te enviamos un enlace a tu correo para crear una nueva."],
     reset: ["Crea una contraseña nueva", "Escríbela y entrarás de una vez."],
@@ -327,7 +331,7 @@
     if (!f.acceptPrivacy.checked) { e.preventDefault(); return toast("Debes aceptar el aviso de privacidad"); }
     submitAuth(e, "/api/auth/register", { name: f.name.value, phone: f.phone.value, email: f.email.value,
       password: f.password.value, website: f.website.value, source: f.source.value, acceptPrivacy: true },
-      (u) => `¡Bienvenido, ${u.name.split(" ")[0]}!`);
+      (u) => `¡Listo, ${u.name.split(" ")[0]}! Tu cuenta está creada`);
   });
   $("#form-reset").addEventListener("submit", (e) => submitAuth(e, "/api/auth/reset",
     { token: resetToken, password: e.target.password.value }, () => "Contraseña actualizada"));
@@ -393,14 +397,15 @@
     if (step === 1) {
       $("#flow-services").innerHTML = CATEGORIES.map((c) => {
         const items = SERVICES.filter((s) => s.cat === c.id);
-        return items.length ? `<p class="group">${esc(c.name)}</p>` + items.map(svcHTML).join("") : "";
+        return items.length ? `<p class="group">${esc(c.name)}${c.staff ? ` · <span class="group__staff">${esc(c.staff)}</span>` : ""}</p>` + items.map(svcHTML).join("") : "";
       }).join("");
       next.textContent = "Elegir día y hora";
       next.disabled = !state.cart.length;
     }
 
     if (step === 2) {
-      $("#duration-note").textContent = `Tu cita dura ${fmtMin(cartMinutes())}. Te mostramos solo horas donde cabe completa.`;
+      const who = cartItems()[0] ? staffLine(cartItems()[0].cat) : "";
+      $("#duration-note").textContent = `Tu cita ${who ? who + " " : ""}dura ${fmtMin(cartMinutes())}. Te mostramos solo horas donde cabe completa.`;
       next.disabled = true;
       next.textContent = "Elige una hora";
       if (!state.avail) $("#slots").innerHTML = `<p class="no-slots">Buscando espacios…</p>`;
@@ -445,7 +450,8 @@
       $("#summary").innerHTML = `
         <p class="summary__when">${longDate(state.day)} · ${fmtTime(state.slot)}</p>
         ${cartItems().map((s) => `<div class="summary__row"><span>${esc(s.name)}</span><span>${fmtMoney(s.price)}</span></div>`).join("")}
-        <div class="summary__row"><span>Termina aprox.</span><span>${fmtTime(state.slot + cartMinutes())}</span></div>`;
+        <div class="summary__row"><span>Termina aprox.</span><span>${fmtTime(state.slot + cartMinutes())}</span></div>
+        ${cartItems()[0] && catOf(cartItems()[0].cat).staff ? `<div class="summary__row"><span>Te atiende</span><span>${esc(catOf(cartItems()[0].cat).staff)}</span></div>` : ""}`;
       $("#policy-list").innerHTML = [cancelRule(), ...B.policies].map((p) => `<li>${esc(p)}</li>`).join("");
       next.textContent = USER ? "Confirmar reserva" : "Inicia sesión para confirmar";
       next.disabled = false;
@@ -478,14 +484,14 @@
 
   function showTicket(a) {
     const svc = a.services.map(svcName).join(" + ");
-    const msg = `Hola, soy ${USER.name}. Acabo de reservar ${svc} para el ${longDate(a.day)} a las ${fmtTime(a.start)} (reserva ${a.id}).`;
+    const msg = `Hola, soy ${USER.name}. Acabo de reservar ${svc}${staffLine(a.category) ? " " + staffLine(a.category) : ""} para el ${longDate(a.day)} a las ${fmtTime(a.start)} (reserva ${a.id}).`;
     $("#ticket").innerHTML = `
       <img class="ticket__logo" src="img/victor-aguilar.svg" width="96" height="96" alt="" />
       <h2>Cita reservada</h2>
       <span class="ticket__state">Pendiente de confirmación</span>
       <p class="ticket__time">${fmtTime(a.start)}</p>
       <p class="ticket__date">${longDate(a.day)}</p>
-      <p class="ticket__svc">${esc(svc)} · ${fmtMoney(a.total)}</p>
+      <p class="ticket__svc">${esc(svc)} · ${fmtMoney(a.total)}${staffLine(a.category) ? `<br><span class="ticket__staff">${esc(staffLine(a.category))}</span>` : ""}</p>
       ${B.emailEnabled ? `<p class="ticket__mail">Te avisaremos a <strong>${esc(USER.email)}</strong> cuando la barbería confirme.</p>` : ""}
       <div class="ticket__actions">
         <a class="btn btn--gold" target="_blank" rel="noopener"
@@ -502,7 +508,7 @@
     const stamp = (m) => a.day.replace(/-/g, "") + "T" + pad(Math.floor(m / 60)) + pad(m % 60) + "00";
     const p = new URLSearchParams({
       action: "TEMPLATE",
-      text: `${a.services.map(svcName).join(" + ")} · ${B.name} Barbería`,
+      text: `${a.services.map(svcName).join(" + ")} · ${catOf(a.category).brand || B.name + " Barbería"}`,
       dates: `${stamp(a.start)}/${stamp(a.start + a.minutes)}`,
       ctz: "America/Costa_Rica",
       location: B.location,

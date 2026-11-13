@@ -94,6 +94,8 @@ function openDb(file) {
   const ucols = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
   if (!ucols.includes("role")) db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'cliente'");
   if (!ucols.includes("source")) db.exec("ALTER TABLE users ADD COLUMN source TEXT NOT NULL DEFAULT ''");
+  // Agenda que atiende cada cuenta del equipo ('' = todas).
+  if (!ucols.includes("agenda")) db.exec("ALTER TABLE users ADD COLUMN agenda TEXT NOT NULL DEFAULT ''");
   if (!ucols.includes("privacy_accepted_at")) db.exec("ALTER TABLE users ADD COLUMN privacy_accepted_at TEXT");
   if (!ucols.includes("privacy_version")) db.exec("ALTER TABLE users ADD COLUMN privacy_version TEXT");
   // Ajustes del negocio editables desde el panel (clave → JSON).
@@ -135,7 +137,10 @@ function repo(db) {
     settingGet: db.prepare("SELECT value FROM settings WHERE key = ?"),
     settingSet: db.prepare(`INSERT INTO settings (key, value) VALUES (?, ?)
       ON CONFLICT (key) DO UPDATE SET value = excluded.value`),
-    admins: db.prepare("SELECT id, name, phone, email, created_at FROM users WHERE role = 'admin' ORDER BY name"),
+    admins: db.prepare("SELECT id, name, phone, email, agenda, created_at FROM users WHERE role = 'admin' ORDER BY name"),
+    userSetAgenda: db.prepare("UPDATE users SET agenda = ?, updated_at = ? WHERE id = ?"),
+    pendingByCategory: db.prepare(`SELECT category, COUNT(*) AS n FROM bookings
+      WHERE status = 'pendiente' AND day >= ? GROUP BY category`),
     sessionInsert: db.prepare("INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)"),
     sessionGet: db.prepare("SELECT * FROM sessions WHERE token_hash = ? AND expires_at > ?"),
     sessionDelete: db.prepare("DELETE FROM sessions WHERE token_hash = ?"),
@@ -197,6 +202,8 @@ function repo(db) {
     setting(key, fallback) { const r = q.settingGet.get(key); return r ? JSON.parse(r.value) : fallback; },
     settingSet: (key, value) => q.settingSet.run(key, JSON.stringify(value)),
     admins: () => q.admins.all(),
+    userSetAgenda: (id, agenda) => q.userSetAgenda.run(agenda, new Date().toISOString(), id),
+    pendingByCategory: (fromDay) => Object.fromEntries(q.pendingByCategory.all(fromDay).map((r) => [r.category, r.n])),
     sessionInsert: (h, uid, exp) => q.sessionInsert.run(h, uid, exp),
     sessionGet: (h) => q.sessionGet.get(h, Date.now()),
     sessionDelete: (h) => q.sessionDelete.run(h),

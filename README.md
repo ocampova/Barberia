@@ -29,6 +29,13 @@ Barbero (/admin)   ◄───────────┘   + aviso push opcion
 3. En `/admin` el barbero toca **Confirmar** o **Rechazar**. Si el cliente dejó correo, el aviso le llega por ahí; si no, se abre WhatsApp con el mensaje ya escrito.
 4. En "Mis citas", el cliente ve el estado de su cita (pendiente, confirmada…) y puede cancelarla, lo que libera el espacio.
 
+### Dos agendas: barbería y salón
+
+Cada categoría es una **agenda separada**, con su horario y su cupo: **Víctor Aguilar** atiende la barbería y **Sadie Matamoros**, Seimar Salón. Una cita del salón nunca ocupa un espacio de la barbería.
+- **El cliente ve quién lo atiende** al elegir servicios, al reservar, en el ticket, en "Mis citas", en los correos y en WhatsApp. Cada agenda usa su nombre comercial ("Víctor Aguilar Barbería" o "Seimar Salón").
+- **En el panel**, cada cuenta del equipo se asigna a su agenda en **Ajustes → Equipo**. Al entrar, cada quien ve sus pendientes, su agenda y su horario. El filtro **Todas / Víctor / Sadie** permite ver la otra agenda.
+- Los nombres se cambian en `server/config.js` (`staff`, `brand` y `place` de cada categoría).
+
 ### Cuentas de clientes
 
 - **Sin cuenta** se pueden ver servicios y horarios. Para **confirmar una reserva** hay que iniciar sesión o crear una cuenta en ese mismo paso.

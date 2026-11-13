@@ -53,10 +53,12 @@ module.exports = {
   ],
 
   // capacity = cuántas citas pueden atenderse a la vez (sillas o profesionales).
-  // staff = nombre que aparece como "Profesional" en los correos (opcional).
+  // Cada categoría es una agenda separada, con su horario y su cupo.
+  // staff = profesional que atiende esa agenda; brand = nombre comercial;
+  // place = cómo se nombra el lugar en los mensajes ("la barbería", "el salón").
   categories: [
-    { id: "barberia", name: "Barbería", capacity: 1, staff: "Víctor Aguilar" },
-    { id: "salon", name: "Seimar Salón", capacity: 1 },
+    { id: "barberia", name: "Barbería", capacity: 1, staff: "Víctor Aguilar", brand: "Víctor Aguilar Barbería", place: "la barbería" },
+    { id: "salon", name: "Seimar Salón", capacity: 1, staff: "Sadie Matamoros", brand: "Seimar Salón", place: "el salón" },
   ],
   reminderHoursBefore: 24, // recordatorio por correo, si el cliente dejó su correo
 
