@@ -70,7 +70,10 @@
       <!-- Horario -->
       <div class="view" data-view="schedule" hidden>
         <div class="seg" id="sch-cats" role="tablist"></div>
-        <p class="adm-hint">Toca uno o varios días para abrirlos, cerrarlos o cambiar su horario.</p>
+        <div class="sch-actions">
+          <p class="adm-hint">Toca uno o varios días para abrirlos, cerrarlos o cambiar su horario.</p>
+          <button class="btn btn--ghost adm-small" data-action="range-open">Rango de fechas</button>
+        </div>
         <div class="cal">
           <div class="cal__head">
             <button class="iconbtn" data-action="cal-prev" aria-label="Mes anterior">‹</button>
@@ -152,11 +155,35 @@
           <input type="checkbox" class="switch" id="de-open" />
         </label>
         <div id="de-ranges"></div>
+        <label class="adm-check de-both" id="de-both-row">
+          <input type="checkbox" id="de-both" /> <span id="de-both-label">Aplicar también a la otra agenda</span>
+        </label>
         <p class="adm-hint" id="de-warn" hidden></p>
       </div>
       <footer class="flow__foot adm-foot">
         <button class="btn btn--ghost" data-action="days-reset">Usar horario semanal</button>
         <button class="btn btn--gold" data-action="days-save">Guardar</button>
+      </footer>
+    </div>
+
+    <!-- RANGO DE FECHAS -->
+    <div class="flow" id="range-editor" hidden role="dialog" aria-modal="true" aria-labelledby="re-title">
+      <header class="flow__head">
+        <span></span>
+        <strong id="re-title">Rango de fechas</strong>
+        <button class="iconbtn" data-action="close-sheet" aria-label="Cerrar">×</button>
+      </header>
+      <div class="flow__body pane">
+        <p class="adm-hint">Para vacaciones, feriados o semanas con horario especial. Elige las fechas y en el siguiente paso decides si se cierran o con qué horario se abren.</p>
+        <div class="adm-row">
+          <label class="field"><span>Desde</span><input type="date" id="re-from" /></label>
+          <label class="field"><span>Hasta (incluido)</span><input type="date" id="re-to" /></label>
+        </div>
+        <p class="adm-hint" id="re-count"></p>
+      </div>
+      <footer class="flow__foot adm-foot">
+        <button class="btn btn--ghost" data-action="close-sheet">Cancelar</button>
+        <button class="btn btn--gold" data-action="range-next">Continuar</button>
       </footer>
     </div>
 

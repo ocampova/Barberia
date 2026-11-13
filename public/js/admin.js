@@ -310,7 +310,9 @@
       case "sel-clear": selected.clear(); return renderSchedule();
       case "edit-days": return openDayEditor();
       case "edit-week": return openWeekEditor();
-      case "close-sheet": $("#day-editor").hidden = true; $("#week-editor").hidden = true; $("#svc-editor").hidden = true; return;
+      case "close-sheet": $("#day-editor").hidden = true; $("#week-editor").hidden = true; $("#svc-editor").hidden = true; $("#range-editor").hidden = true; return;
+      case "range-open": return openRange();
+      case "range-next": return rangeNext();
       case "svc-new": return openSvcEditor(null);
       case "svc-save": return saveSvc();
       case "svc-delete": return deleteSvc();
@@ -321,10 +323,11 @@
       case "week-save": return saveWeek();
     }
     if (ds.cal) {
+      rangeInfo = null;
       selected.has(ds.cal) ? selected.delete(ds.cal) : selected.add(ds.cal);
       return renderSchedule();
     }
-    if (ds.schcat) { schCategory = ds.schcat; selected.clear(); return renderSchedule(); }
+    if (ds.schcat) { schCategory = ds.schcat; selected.clear(); rangeInfo = null; return renderSchedule(); }
     if (ds.svcEdit) return openSvcEditor(ds.svcEdit);
     if (ds.srcDays !== undefined) return renderSources(Number(ds.srcDays));
     if (ds.agendaFilter !== undefined) {
@@ -533,23 +536,31 @@
     return out;
   }
 
-  function openDayEditor() {
+  function openDayEditor({ closeByDefault = false } = {}) {
     const days = [...selected].sort();
     if (!days.length) return;
     const infos = days.map((d) => sched.days.find((x) => x.day === d)).filter(Boolean);
-    const one = infos.length === 1 ? infos[0] : null;
+    const one = days.length === 1 && infos.length === 1 ? infos[0] : null;
     const catName = C.categories.find((c) => c.id === schCategory).name;
-    $("#de-title").textContent = one ? longDate(one.day) : `${days.length} días`;
-    $("#de-sub").textContent = one
-      ? `${catName} · ${one.special ? "Horario cambiado solo para este día" : "Usa el horario semanal"}${one.bookings ? ` · ${one.bookings} cita(s)` : ""}`
-      : `${catName} · ${days.map((d) => `${DOW[asDate(d).getDay()]} ${asDate(d).getDate()}`).join(", ")}`;
+    const short = (d) => asDate(d).toLocaleDateString("es-CR", { weekday: "short", day: "numeric", month: "short" });
+    $("#de-title").textContent = rangeInfo ? `Del ${short(rangeInfo.from)} al ${short(rangeInfo.to)}` : one ? longDate(one.day) : `${days.length} días`;
+    $("#de-sub").textContent = rangeInfo
+      ? `${catName} · ${days.length} ${days.length === 1 ? "día" : "días"} seguidos`
+      : one
+        ? `${catName} · ${one.special ? "Horario cambiado solo para este día" : "Usa el horario semanal"}${one.bookings ? ` · ${one.bookings} cita(s)` : ""}`
+        : `${catName} · ${days.map((d) => `${DOW[asDate(d).getDay()]} ${asDate(d).getDate()}`).join(", ")}`;
     const base = one ? one.ranges : (infos.find((i) => i.ranges.length) || { ranges: [] }).ranges;
-    const open = one ? one.ranges.length > 0 : true;
+    const open = closeByDefault ? false : one ? one.ranges.length > 0 : true;
+    const others = C.categories.filter((c) => c.id !== schCategory);
+    $("#de-both-row").hidden = !others.length;
+    $("#de-both").checked = false;
+    $("#de-both-label").textContent = `Aplicar también a ${others.map((c) => c.name + (c.staff ? ` (${c.staff.split(" ")[0]})` : "")).join(", ")}`;
     $("#de-open").checked = open;
     $("#de-ranges").innerHTML = rangesHTML(base);
     $("#de-ranges").hidden = !open;
     $("#de-warn").hidden = true;
-    $("[data-action=days-reset]").hidden = one ? !one.special : !infos.some((i) => i.special);
+    // En un rango siempre se puede volver al horario semanal (por ejemplo, para deshacer unas vacaciones).
+    $("[data-action=days-reset]").hidden = rangeInfo ? false : one ? !one.special : !infos.some((i) => i.special);
     $("#day-editor").hidden = false;
   }
   $("#de-open").addEventListener("change", (e) => { $("#de-ranges").hidden = !e.target.checked; });
@@ -559,19 +570,66 @@
     try { if (!reset) ranges = $("#de-open").checked ? readRanges($("#de-ranges")) : []; }
     catch (err) { return toast(err.message); }
     const days = [...selected].sort();
+    const cats = [schCategory, ...($("#de-both").checked ? C.categories.filter((c) => c.id !== schCategory).map((c) => c.id) : [])];
     try {
-      const r = await api("/api/admin/schedule/days", { method: "PUT", body: { category: schCategory, days, ranges } });
+      const outside = [];
+      for (const category of cats) {
+        const r = await api("/api/admin/schedule/days", { method: "PUT", body: { category, days, ranges } });
+        outside.push(...r.outside);
+      }
       $("#day-editor").hidden = true;
       selected.clear();
+      rangeInfo = null;
       await renderSchedule();
+      const r = { outside };
       if (r.outside.length) {
         alert(`Atención: ${r.outside.length} cita(s) quedan fuera del nuevo horario y NO se cancelaron:\n\n` +
-          r.outside.map((b) => `• ${DOW[asDate(b.day).getDay()]} ${asDate(b.day).getDate()}, ${fmtTime(b.start)} — ${b.name}`).join("\n") +
+          r.outside.map((b) => `• ${DOW[asDate(b.day).getDay()]} ${asDate(b.day).getDate()}/${asDate(b.day).getMonth() + 1}, ${fmtTime(b.start)} — ${b.name}`).join("\n") +
           `\n\nRevísalas en la Agenda para avisar al cliente o cancelarlas.`);
       } else {
-        toast(reset ? "Horario semanal restablecido" : ranges.length ? "Días abiertos con ese horario" : "Días cerrados");
+        const both = cats.length > 1 ? " en ambas agendas" : "";
+        toast((reset ? "Horario semanal restablecido" : ranges.length ? "Días abiertos con ese horario" : `${days.length} ${days.length === 1 ? "día cerrado" : "días cerrados"}`) + both);
       }
     } catch (err) { toast(err.message); }
+  }
+
+  /* Rango de fechas: selecciona todos los días entre dos fechas y abre el editor. */
+  let rangeInfo = null;
+  function openRange() {
+    const f = $("#re-from"), t = $("#re-to");
+    f.min = t.min = C.today;
+    f.max = t.max = addDays(C.today, 365);
+    if (!f.value || f.value < C.today) f.value = C.today;
+    if (!t.value || t.value < f.value) t.value = addDays(f.value, 6);
+    updateRangeCount();
+    $("#range-editor").hidden = false;
+  }
+  function rangeDays(from, to) {
+    const out = [];
+    for (let d = from; d <= to && out.length <= 400; d = addDays(d, 1)) out.push(d);
+    return out;
+  }
+  function updateRangeCount() {
+    const from = $("#re-from").value, to = $("#re-to").value;
+    $("#re-count").textContent = from && to && from <= to ? `${rangeDays(from, to).length} días seleccionados.` : "";
+  }
+  $("#re-from").addEventListener("change", () => {
+    if ($("#re-to").value < $("#re-from").value) $("#re-to").value = $("#re-from").value;
+    updateRangeCount();
+  });
+  $("#re-to").addEventListener("change", updateRangeCount);
+  function rangeNext() {
+    const from = $("#re-from").value, to = $("#re-to").value;
+    if (!from || !to) return toast("Elige las dos fechas");
+    if (from < C.today) return toast("La fecha inicial no puede ser pasada");
+    if (to < from) return toast("La fecha final debe ser igual o posterior a la inicial");
+    const days = rangeDays(from, to);
+    if (days.length > 366) return toast("El rango puede ser de hasta un año");
+    selected.clear();
+    days.forEach((d) => selected.add(d));
+    rangeInfo = { from, to };
+    $("#range-editor").hidden = true;
+    openDayEditor({ closeByDefault: true });
   }
 
   function openWeekEditor() {

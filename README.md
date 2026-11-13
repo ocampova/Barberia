@@ -75,6 +75,8 @@ Se entra con correo o teléfono y contraseña, con una cuenta de **administrador
   - **Horario semanal:** el horario normal de cada día. Cada día puede estar cerrado o tener hasta 4 turnos, por ejemplo 9:00–12:00 y 14:00–19:00 para dejar el almuerzo libre.
   - **Calendario:** se tocan uno o varios días y se **abren** con un horario, se **cierran** (vacaciones, feriados) o vuelven al horario semanal.
   - **Sin horario fijo:** se cierran todos los días en el horario semanal y se abren solo los días que se trabaja.
+  - **Rango de fechas** (vacaciones, feriados): se eligen **desde** y **hasta**, y el rango completo se cierra, se abre con un horario especial o vuelve al horario semanal. Hasta un año de una vez.
+  - **Ambas agendas:** al editar días o rangos, la casilla "Aplicar también a…" aplica el cambio a la barbería y al salón al mismo tiempo.
   - **Aviso de citas:** si un cambio deja citas fuera del horario, el panel avisa. Esas citas no se cancelan solas.
 
 ## Correr en tu computadora

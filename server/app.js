@@ -683,7 +683,7 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
   route("PUT", "/api/admin/schedule/days", ({ body }) => {
     const category = parseCategory(body.category);
     const days = body.days;
-    if (!Array.isArray(days) || !days.length || days.length > 120 || days.some((d) => !isDay(d)))
+    if (!Array.isArray(days) || !days.length || days.length > 400 || days.some((d) => !isDay(d)))
       throw new HttpError(400, "Elige al menos un día válido.");
     const ranges = body.ranges;
     if (ranges !== null) {

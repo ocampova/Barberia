@@ -98,3 +98,21 @@ test("correos del salón: nombre comercial y profesional correctos", () => {
   assert.equal(r.subject, "Recibimos tu solicitud de cita · Víctor Aguilar Barbería");
   assert.match(r.html, /La barbería la revisará/);
 });
+
+test("cerrar un rango largo de fechas (vacaciones) en una o ambas agendas", async (t) => {
+  const { browser } = await setup(t);
+  const v = browser();
+  await v("POST", "/api/auth/login", { login: "victor@example.com", password: "clave-de-victor" });
+  const days = [];
+  for (let d = new Date("2026-12-20T12:00:00Z"); days.length < 200; d.setUTCDate(d.getUTCDate() + 1)) days.push(d.toISOString().slice(0, 10));
+  assert.equal((await v("PUT", "/api/admin/schedule/days", { category: "barberia", days, ranges: [] })).status, 200);
+  const big = [...days, ...days.map((d) => d.replace("2026", "2028")), ...days.map((d) => d.replace("2026", "2029"))];
+  assert.equal((await v("PUT", "/api/admin/schedule/days", { category: "barberia", days: big, ranges: [] })).status, 400); // más de 400 días
+
+  const sch = (await v("GET", "/api/admin/schedule?category=barberia&from=2026-12-19&to=2027-01-06")).body.days;
+  assert.deepEqual(sch.find((d) => d.day === "2026-12-19").ranges.length > 0, true); // el día antes sigue abierto
+  assert.ok(sch.filter((d) => d.day >= "2026-12-20").every((d) => d.ranges.length === 0 && d.special));
+  // El salón sigue abierto esos días
+  const salon = (await v("GET", "/api/admin/schedule?category=salon&from=2026-12-21&to=2026-12-21")).body.days[0];
+  assert.ok(salon.ranges.length > 0);
+});
