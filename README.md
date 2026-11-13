@@ -31,9 +31,9 @@ Barbero (/admin)   ◄───────────┘   + aviso push opcion
 
 ### Dos agendas: barbería y salón
 
-Cada categoría es una **agenda separada**, con su horario y su cupo: **Víctor Aguilar** atiende la barbería y **Sadie Matamoros**, Seimar Salón. Una cita del salón nunca ocupa un espacio de la barbería.
+Cada categoría es una **agenda separada**, con su horario y su cupo: **Víctor Aguilar** atiende la barbería y **Seidy Matamoros**, Seimar Salón. Una cita del salón nunca ocupa un espacio de la barbería.
 - **El cliente ve quién lo atiende** al elegir servicios, al reservar, en el ticket, en "Mis citas", en los correos y en WhatsApp. Cada agenda usa su nombre comercial ("Víctor Aguilar Barbería" o "Seimar Salón").
-- **En el panel**, cada cuenta del equipo se asigna a su agenda en **Ajustes → Equipo**. Al entrar, cada quien ve sus pendientes, su agenda y su horario. El filtro **Todas / Víctor / Sadie** permite ver la otra agenda.
+- **En el panel**, cada cuenta del equipo se asigna a su agenda en **Ajustes → Equipo**. Al entrar, cada quien ve sus pendientes, su agenda y su horario. El filtro **Todas / Víctor / Seidy** permite ver la otra agenda.
 - Los nombres se cambian en `server/config.js` (`staff`, `brand` y `place` de cada categoría).
 
 ### Cuentas de clientes

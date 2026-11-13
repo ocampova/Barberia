@@ -58,7 +58,7 @@ module.exports = {
   // place = cómo se nombra el lugar en los mensajes ("la barbería", "el salón").
   categories: [
     { id: "barberia", name: "Barbería", capacity: 1, staff: "Víctor Aguilar", brand: "Víctor Aguilar Barbería", place: "la barbería" },
-    { id: "salon", name: "Seimar Salón", capacity: 1, staff: "Sadie Matamoros", brand: "Seimar Salón", place: "el salón" },
+    { id: "salon", name: "Seimar Salón", capacity: 1, staff: "Seidy Matamoros", brand: "Seimar Salón", place: "el salón" },
   ],
   reminderHoursBefore: 24, // recordatorio por correo, si el cliente dejó su correo
 

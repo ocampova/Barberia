@@ -38,7 +38,7 @@ test("cada agenda tiene su profesional y su nombre comercial", async (t) => {
   const cats = (await browser()("GET", "/api/config")).body.categories;
   assert.deepEqual(cats.map((c) => [c.id, c.staff, c.brand]), [
     ["barberia", "Víctor Aguilar", "Víctor Aguilar Barbería"],
-    ["salon", "Sadie Matamoros", "Seimar Salón"],
+    ["salon", "Seidy Matamoros", "Seimar Salón"],
   ]);
   assert.equal(cats[0].capacity, undefined); // no se expone la capacidad
 });
@@ -59,28 +59,28 @@ test("equipo: cada cuenta se asigna a su agenda y el resumen separa las pendient
   const { browser } = await setup(t);
   const victor = browser();
   assert.equal((await victor("POST", "/api/auth/login", { login: "victor@example.com", password: "clave-de-victor" })).status, 200);
-  const sadie = browser();
-  await sadie("POST", "/api/auth/register", { name: "Sadie Matamoros", phone: "87001234", email: "sadie@example.com", password: "clave-de-sadie", acceptPrivacy: true });
-  await victor("POST", "/api/admin/team", { login: "sadie@example.com" });
+  const seidy = browser();
+  await seidy("POST", "/api/auth/register", { name: "Seidy Matamoros", phone: "87001234", email: "seidy@example.com", password: "clave-de-seidy", acceptPrivacy: true });
+  await victor("POST", "/api/admin/team", { login: "seidy@example.com" });
 
   const team = (await victor("GET", "/api/admin/team")).body.admins;
-  const sadieId = team.find((a) => a.email === "sadie@example.com").id;
-  assert.equal((await victor("PUT", `/api/admin/team/${sadieId}`, { agenda: "nope" })).status, 400);
-  const r = await victor("PUT", `/api/admin/team/${sadieId}`, { agenda: "salon" });
-  assert.equal(r.body.admins.find((a) => a.id === sadieId).agenda, "salon");
-  assert.equal((await sadie("GET", "/api/me")).body.user.agenda, "salon");
+  const seidyId = team.find((a) => a.email === "seidy@example.com").id;
+  assert.equal((await victor("PUT", `/api/admin/team/${seidyId}`, { agenda: "nope" })).status, 400);
+  const r = await victor("PUT", `/api/admin/team/${seidyId}`, { agenda: "salon" });
+  assert.equal(r.body.admins.find((a) => a.id === seidyId).agenda, "salon");
+  assert.equal((await seidy("GET", "/api/me")).body.user.agenda, "salon");
 
   // Una pendiente en cada agenda
   const cli = browser();
   await cli("POST", "/api/auth/register", { name: "Luis Solano", phone: "86001133", email: "luis@example.com", password: "secreto123", acceptPrivacy: true });
   await cli("POST", "/api/bookings", { services: ["corte"], day: "2026-11-10", start: 600 });
   await cli("POST", "/api/bookings", { services: ["unas"], day: "2026-11-10", start: 600 });
-  const sum = (await sadie("GET", "/api/admin/summary")).body;
+  const sum = (await seidy("GET", "/api/admin/summary")).body;
   assert.equal(sum.pending, 2);
   assert.deepEqual(sum.pendingBy, { barberia: 1, salon: 1 });
 
   // Un cliente no puede cambiar agendas
-  assert.equal((await cli("PUT", `/api/admin/team/${sadieId}`, { agenda: "" })).status, 403);
+  assert.equal((await cli("PUT", `/api/admin/team/${seidyId}`, { agenda: "" })).status, 403);
 });
 
 test("correos del salón: nombre comercial y profesional correctos", () => {
@@ -88,7 +88,7 @@ test("correos del salón: nombre comercial y profesional correctos", () => {
   const svc = config.services.map((s) => ({ id: s.id, name: s.name }));
   const m = render("confirmada", b, { ...config, services: svc }, { link: "https://x/?citas=1" });
   assert.equal(m.subject, "Tu cita en Seimar Salón está confirmada");
-  assert.match(m.html, /Sadie Matamoros/);
+  assert.match(m.html, /Seidy Matamoros/);
   assert.match(m.html, /aprobada por el salón/);
   assert.ok(!/Barbería está confirmada/.test(m.subject));
   const ics = Buffer.from(m.attachments[0].content, "base64").toString();
