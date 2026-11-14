@@ -93,6 +93,8 @@ test("correos del salón: nombre comercial y profesional correctos", () => {
   assert.ok(!/Barbería está confirmada/.test(m.subject));
   const ics = Buffer.from(m.attachments[0].content, "base64").toString();
   assert.match(ics, /SUMMARY:Color · Seimar Salón/);
+  assert.match(ics, /DESCRIPTION:Cita en el salón · Seimar Salón/); // la alarma del calendario no dice "barbería"
+  assert.ok(!/barber/i.test(ics), "el .ics del salón no menciona la barbería");
 
   const r = render("recibida", { ...b, category: "barberia", services: ["corte"] }, { ...config, services: svc });
   assert.equal(r.subject, "Recibimos tu solicitud de cita · Víctor Aguilar Barbería");

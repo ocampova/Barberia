@@ -493,7 +493,7 @@
     const svc = a.services.map(svcName).join(" + ");
     const msg = `Hola, soy ${USER.name}. Acabo de reservar ${svc}${staffLine(a.category) ? " " + staffLine(a.category) : ""} para el ${longDate(a.day)} a las ${fmtTime(a.start)} (reserva ${a.id}).`;
     $("#ticket").innerHTML = `
-      <img class="ticket__logo" src="img/victor-aguilar.svg" width="96" height="96" alt="" />
+      <img class="ticket__logo" src="${esc((B.logos && B.logos.main) || "")}" width="96" height="96" alt="" />
       <h2>Cita reservada</h2>
       <span class="ticket__state">Pendiente de confirmación</span>
       <p class="ticket__time">${fmtTime(a.start)}</p>

@@ -2,7 +2,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const config = require("./fixtures/dos-agendas");
-const { render, ics } = require("../server/emails");
+const { render, renderReset, ics } = require("../server/emails");
 
 const b = { id: "abc123", token: "t", category: "barberia", day: "2026-10-02", start: 18 * 60, minutes: 50,
   services: ["corte"], total: 9000, name: "Juan Pérez", email: "j@example.com" };
@@ -36,3 +36,11 @@ test(".ics en hora de Costa Rica (UTC-6)", () => {
   assert.match(s, /SUMMARY:Corte caballero · Víctor Aguilar Barbería/);
   assert.ok(s.includes("\r\n"));
 });
+
+test("correo de contraseña: logo y colores del negocio, desde su propia dirección", () => {
+  const m = renderReset({ name: "Ana Mora" }, { ...config, theme: { accent: "#c8917c", ink: "#2a1510" } }, "https://seimar.elcorte.app/?reset=abc");
+  assert.match(m.html, /<img src="https:\/\/seimar\.elcorte\.app\/img\/negocios\/victoraguilar\/email\.png"/);
+  assert.match(m.html, /#c8917c/);
+  assert.match(m.subject, /Cambia tu contraseña · /);
+});
+

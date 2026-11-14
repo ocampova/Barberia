@@ -165,3 +165,39 @@ test("migración: los datos del salón pasan de la base de Víctor a la de Seima
   assert.equal(check.prepare("SELECT COUNT(*) AS n FROM bookings WHERE category = 'salon'").get().n, 0);
   check.close();
 });
+
+test("correos: cada negocio envía con su nombre, y la dirección de respuesta global es solo del negocio por defecto", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "from-"));
+  const sent = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (u, o) => { sent.push(JSON.parse(o.body)); return { ok: true, status: 200, json: async () => ({ id: "x" }), text: async () => "" }; };
+  try {
+    const p = createPlatform({ negocios, dataDir: dir, log: quiet, clock,
+      env: { PUBLIC_URL: "https://victoraguilar.elcorte.app", RESEND_API_KEY: "re_x", EMAIL_FROM: "Víctor Aguilar Barbería <reservas@elcorte.app>",
+        EMAIL_REPLY_TO: "victor@example.com", REGISTER_RATE_LIMIT: "100", LOGIN_RATE_LIMIT: "100" } });
+    const server = http.createServer(p.handler);
+    await new Promise((ok) => server.listen(0, ok));
+    const port = server.address().port;
+    const post = (host, url, body) => new Promise((ok) => {
+      const data = JSON.stringify(body);
+      const r = http.request({ host: "127.0.0.1", port, method: "POST", path: url, headers: { host, "content-type": "application/json", "content-length": Buffer.byteLength(data) } },
+        (res) => { res.resume(); res.on("end", ok); });
+      r.end(data);
+    });
+    for (const host of ["victoraguilar.elcorte.app", "seimar.elcorte.app"]) {
+      await post(host, "/api/auth/register", { name: "Ana Mora", phone: "86001122", email: "ana@example.com", password: "secreto123", acceptPrivacy: true });
+      await post(host, "/api/auth/forgot", { email: "ana@example.com" });
+    }
+    await new Promise((ok) => setTimeout(ok, 30));
+    server.close(); p.close();
+    assert.deepEqual(sent.map((m) => [m.from, m.reply_to]), [
+      ["Víctor Aguilar Barbería <reservas@elcorte.app>", "victor@example.com"],
+      ["Seimar Salón <reservas@elcorte.app>", undefined],
+    ]);
+    assert.match(sent[1].html, /seimar\.elcorte\.app\/img\/negocios\/seimar\/email\.png/);
+  } finally {
+    globalThis.fetch = realFetch;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+

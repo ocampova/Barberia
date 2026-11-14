@@ -125,7 +125,8 @@ function createPlatform({ negocios, dataDir, env = process.env, defaultSlug, clo
       ADMIN_EMAIL: "", ADMIN_PASSWORD: "", ADMIN_FORCE: "", // el dueño se administra desde la plataforma
       PUBLIC_URL: urlOf(n) || "",
       EMAIL_FROM: fromAddress ? `${n.name} <${fromAddress}>` : "",
-      EMAIL_REPLY_TO: n.replyTo || env.EMAIL_REPLY_TO || "",
+      // Respuestas a los correos: la de cada negocio (replyTo en su archivo). EMAIL_REPLY_TO solo vale para el negocio por defecto.
+      EMAIL_REPLY_TO: n.replyTo || (n.slug === def ? env.EMAIL_REPLY_TO : "") || "",
       BACKUP_S3_PREFIX: `${(env.BACKUP_S3_PREFIX || "backups/").replace(/\/?$/, "/")}${n.slug}/`,
     };
     const backups = createBackups({ db, dir: path.join(dataDir, "backups", n.slug), env: nEnv, log });

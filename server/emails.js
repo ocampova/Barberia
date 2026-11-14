@@ -150,14 +150,14 @@ function render(kind, b, config, { link = null, siteUrl = null, byClient = false
   ].join("\n");
 
   const attachments = k.calendar
-    ? [{ filename: "cita.ics", content: Buffer.from(ics(b, config, svc, ctx.brand)).toString("base64") }]
+    ? [{ filename: "cita.ics", content: Buffer.from(ics(b, config, svc, ctx.brand, ctx.place)).toString("base64") }]
     : undefined;
 
   return { subject: k.subject(ctx, config), html, text: textBody, attachments };
 }
 
 // Invitación de calendario (.ics). Costa Rica no tiene horario de verano: UTC-6 todo el año.
-function ics(b, config, svcNames, brand = config.name) {
+function ics(b, config, svcNames, brand = config.name, place = "el negocio") {
   const pad = (n) => String(n).padStart(2, "0");
   const toUtc = (min) => {
     const d = new Date(`${b.day}T00:00:00-06:00`);
@@ -167,14 +167,14 @@ function ics(b, config, svcNames, brand = config.name) {
   const fold = (s) => s.replace(/[\\;,]/g, (c) => "\\" + c).replace(/\n/g, "\\n");
   const now = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
   return [
-    "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Barberia//Reservas//ES", "METHOD:PUBLISH",
+    "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//El Corte//Reservas//ES", "METHOD:PUBLISH",
     "BEGIN:VEVENT",
-    `UID:${b.id}@barberia`, `DTSTAMP:${now}`,
+    `UID:${b.id}@${config.slug || "reservas"}.elcorte.app`, `DTSTAMP:${now}`,
     `DTSTART:${toUtc(b.start)}`, `DTEND:${toUtc(b.start + b.minutes)}`,
     `SUMMARY:${fold(`${svcNames.join(" + ")} · ${brand}`)}`,
     `LOCATION:${fold(config.location)}`,
     `DESCRIPTION:${fold(`Reserva ${b.id}. WhatsApp: ${config.phone}`)}`,
-    "BEGIN:VALARM", "TRIGGER:-PT2H", "ACTION:DISPLAY", "DESCRIPTION:Cita en la barbería", "END:VALARM",
+    "BEGIN:VALARM", "TRIGGER:-PT2H", "ACTION:DISPLAY", `DESCRIPTION:${fold(`Cita en ${place} · ${brand}`)}`, "END:VALARM",
     "END:VEVENT", "END:VCALENDAR", "",
   ].join("\r\n");
 }
@@ -183,10 +183,13 @@ function ics(b, config, svcNames, brand = config.name) {
 function renderReset(user, config, link) {
   const gold = config.theme?.accent || "#c9a227", ink = config.theme?.ink || "#1a1405", text = "#f3eee6", muted = "#a39a8e";
   const first = esc(user.name.split(" ")[0]);
+  // Logo del negocio (PNG publicado por la app; los correos no muestran SVG).
+  const logoUrl = config.logos?.email ? `${new URL(link).origin}/${config.logos.email}` : null;
   const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
 <body style="margin:0;background:#0b0a09;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0b0a09;"><tr><td align="center" style="padding:28px 14px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;font-family:Helvetica,Arial,sans-serif;color:${text};">
+${logoUrl ? `<tr><td align="center" style="padding:6px 0 22px;"><img src="${esc(logoUrl)}" width="140" height="140" alt="${esc(config.name)}" style="display:block;width:140px;height:auto;border:0;"></td></tr>` : ""}
 <tr><td style="background:#151311;border:1px solid ${gold};border-radius:18px;padding:30px 24px;text-align:center;">
   <h1 style="margin:0 0 10px;font-size:22px;">Hola ${first}</h1>
   <p style="margin:0 0 22px;font-size:15px;line-height:1.5;color:${muted};">Recibimos una solicitud para cambiar la contraseña de tu cuenta en ${esc(config.name)}. El enlace vence en 1 hora.</p>
