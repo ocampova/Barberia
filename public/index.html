@@ -3,13 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0b0a09" />
-  <title>Víctor Aguilar Barbería · Reservas</title>
-  <meta name="description" content="Reserva tu cita en Víctor Aguilar Barbería y Seimar Salón, San Roque de Grecia." />
-  <link rel="icon" href="img/victor-aguilar.svg" type="image/svg+xml" />
-  <link rel="icon" href="img/icon-192.png" sizes="192x192" type="image/png" />
-  <link rel="apple-touch-icon" href="img/apple-touch-icon.png" />
-  <link rel="manifest" href="manifest.webmanifest" />
+  <title>{{name}} · Reservas</title>
+  <meta name="description" content="{{description}}" />
+  <!--MARCA-->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=Playfair+Display:ital,wght@1,600&display=swap" rel="stylesheet" />
@@ -21,12 +17,11 @@
     <section class="view" id="view-home" data-view="home">
       <header class="hero">
         <div class="hero__glow" aria-hidden="true"></div>
-        <img class="brand-logos" src="img/logos-transparente.svg" width="196" height="100"
-             alt="Víctor Aguilar Barbería y Seimar Salón" />
-        <h1 class="hero__title">Tu estilo,<br /><em>nuestra prioridad</em></h1>
+        <img class="brand-logos" src="{{logo}}" width="100" height="100" alt="{{name}}" />
+        <h1 class="hero__title">{{heroTitle}}<br /><em>{{heroAccent}}</em></h1>
         <p class="hero__meta">
           <span class="status" id="open-status"></span>
-          <span>San Roque de Grecia</span>
+          <span>{{city}}</span>
         </p>
         <button class="btn btn--gold btn--block" data-action="start-booking">Reservar cita</button>
       </header>
@@ -53,13 +48,13 @@
             <span class="ico ico--wa" aria-hidden="true"></span>
             <span><strong>WhatsApp</strong><small id="phone-label"></small></span>
           </a>
-          <a class="info__item" target="_blank" rel="noopener"
-             href="https://maps.google.com/?q=San+Roque+de+Grecia,+Alajuela">
+          <a class="info__item" target="_blank" rel="noopener" href="{{mapsUrl}}">
             <span class="ico ico--pin" aria-hidden="true"></span>
-            <span><strong>Cómo llegar</strong><small>San Roque de Grecia, Alajuela</small></span>
+            <span><strong>Cómo llegar</strong><small>{{location}}</small></span>
           </a>
         </div>
-        <p class="slogan">Más que una barbería, un club de amigos</p>
+        <div id="related"></div>
+        <p class="slogan">{{slogan}}</p>
         <p class="legal"><a href="privacidad.html">Aviso de privacidad</a></p>
       </div>
     </section>
@@ -143,7 +138,7 @@
           </form>
           <div class="summary" id="summary"></div>
           <details class="policy">
-            <summary>Políticas de la barbería</summary>
+            <summary>Políticas {{dePlace}}</summary>
             <ul id="policy-list"></ul>
           </details>
         </div>
@@ -165,7 +160,7 @@
     <div class="flow sheet" id="auth" hidden role="dialog" aria-modal="true" aria-labelledby="auth-title">
       <header class="flow__head">
         <span></span>
-        <img class="auth__logo" src="img/victor-aguilar.svg" width="56" height="56" alt="" />
+        <img class="auth__logo" src="{{logo}}" width="56" height="56" alt="" />
         <button class="iconbtn" data-action="auth-close" aria-label="Cerrar">×</button>
       </header>
       <div class="flow__body pane">

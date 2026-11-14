@@ -62,7 +62,7 @@
     else {
       if (state.cart.length && byId(state.cart[0]).cat !== s.cat) {
         state.cart = [];
-        toast("Barbería y salón se reservan por separado");
+        toast("Esos servicios se reservan por separado");
       }
       state.cart.push(id);
     }
@@ -90,9 +90,15 @@
     const popular = SERVICES.filter((x) => x.popular);
     $("#popular").innerHTML = (popular.length ? popular : SERVICES.slice(0, 3)).map(cardHTML).join("");
     $("#wa-link").href = `https://wa.me/${B.whatsapp}`;
+    $("#related").innerHTML = (B.related || []).map((r) => `
+      <a class="related" href="${esc(r.url)}">
+        <img src="${esc(r.logo)}" width="56" height="56" alt="" />
+        <span><small>En el mismo local</small><strong>${esc(r.name)}</strong><em>${esc(r.pitch)}</em></span>
+        <span class="related__go" aria-hidden="true">›</span>
+      </a>`).join("");
     $("#phone-label").textContent = B.phone.replace(/(\d{4})(\d{4})/, "$1 $2");
 
-    const quick = SERVICES.find((x) => x.cat === "barberia") || SERVICES[0];
+    const quick = SERVICES.find((x) => x.popular) || SERVICES[0];
     if (!quick) { $("#today-slots").innerHTML = ""; return; }
     try {
       const { days } = await api(`/api/availability?services=${encodeURIComponent(quick.id)}&days=1`);
@@ -133,6 +139,7 @@
 
   /* ---------------- Servicios ---------------- */
   function renderServices() {
+    $("#cat-chips").hidden = CATEGORIES.length < 2;
     $("#cat-chips").innerHTML = CATEGORIES.map((c) =>
       `<button class="chip ${c.id === state.category ? "is-active" : ""}" data-cat="${c.id}" role="tab">${esc(c.name)}</button>`
     ).join("");
@@ -251,7 +258,7 @@
           <button class="btn btn--ghost btn--block">Cambiar contraseña</button>
         </form>
 
-        ${USER.admin ? `<a class="btn btn--gold btn--block" href="/admin">Ir al panel de la barbería</a>` : ""}
+        ${USER.admin ? `<a class="btn btn--gold btn--block" href="/admin">Ir al panel ${esc(B.dePlace || "del negocio")}</a>` : ""}
         <button class="btn btn--ghost btn--block logout" data-action="logout">Cerrar sesión</button>
       </div>`;
 
@@ -492,7 +499,7 @@
       <p class="ticket__time">${fmtTime(a.start)}</p>
       <p class="ticket__date">${longDate(a.day)}</p>
       <p class="ticket__svc">${esc(svc)} · ${fmtMoney(a.total)}${staffLine(a.category) ? `<br><span class="ticket__staff">${esc(staffLine(a.category))}</span>` : ""}</p>
-      ${B.emailEnabled ? `<p class="ticket__mail">Te avisaremos a <strong>${esc(USER.email)}</strong> cuando la barbería confirme.</p>` : ""}
+      ${B.emailEnabled ? `<p class="ticket__mail">Te avisaremos a <strong>${esc(USER.email)}</strong> cuando ${esc(B.place || "el negocio")} confirme.</p>` : ""}
       <div class="ticket__actions">
         <a class="btn btn--gold" target="_blank" rel="noopener"
            href="https://wa.me/${B.whatsapp}?text=${encodeURIComponent(msg)}">Avisar por WhatsApp</a>
@@ -508,7 +515,7 @@
     const stamp = (m) => a.day.replace(/-/g, "") + "T" + pad(Math.floor(m / 60)) + pad(m % 60) + "00";
     const p = new URLSearchParams({
       action: "TEMPLATE",
-      text: `${a.services.map(svcName).join(" + ")} · ${catOf(a.category).brand || B.name + " Barbería"}`,
+      text: `${a.services.map(svcName).join(" + ")} · ${catOf(a.category).brand || B.name}`,
       dates: `${stamp(a.start)}/${stamp(a.start + a.minutes)}`,
       ctz: "America/Costa_Rica",
       location: B.location,
@@ -584,6 +591,7 @@
     try {
       const [cfg, me] = await Promise.all([api("/api/config"), api("/api/me")]);
       B = cfg; SERVICES = cfg.services; CATEGORIES = cfg.categories; RETIRED = cfg.retired || [];
+      if (!CATEGORIES.some((c) => c.id === state.category)) state.category = CATEGORIES[0]?.id;
       $("#reg-source").innerHTML = `<option value="">Elige una opción</option>` +
         (cfg.sources || []).map((x) => `<option value="${esc(x.id)}">${esc(x.label)}</option>`).join("");
       USER = me.user;

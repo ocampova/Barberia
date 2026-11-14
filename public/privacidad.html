@@ -3,9 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0b0a09" />
-  <title>Aviso de privacidad · Víctor Aguilar Barbería</title>
-  <link rel="icon" href="img/victor-aguilar.svg" type="image/svg+xml" />
+  <title>Aviso de privacidad · {{name}}</title>
+  <!--MARCA-->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -24,18 +23,19 @@
 <body>
   <main class="app doc" style="padding-bottom:48px">
     <a class="link back" href="/">‹ Volver a la app</a>
-    <img src="img/victor-aguilar.svg" width="72" height="72" alt="Víctor Aguilar Barbería" />
+    <img src="{{logo}}" width="72" height="72" alt="{{name}}" />
     <h1>Aviso de privacidad</h1>
     <p class="meta">Versión de noviembre de 2026</p>
 
     <h2>Quién es responsable</h2>
-    <p>Víctor Aguilar Barbería y Seimar Salón, en San Roque de Grecia, Alajuela, Costa Rica, son responsables de los datos
-      personales que nos das al usar esta aplicación de reservas. Puedes contactarnos por WhatsApp al
-      <a href="https://wa.me/50683704499">8370 4499</a>.</p>
+    <p>{{name}}, en {{location}}, Costa Rica, es responsable de los datos personales que nos das al usar esta
+      aplicación de reservas. Puedes contactarnos por WhatsApp al
+      <a href="https://wa.me/{{whatsapp}}">{{phoneFmt}}</a>.</p>
+    <p>Tus datos se usan solo para {{name}}: no se comparten con otros negocios que usen esta misma plataforma.</p>
 
     <h2>Qué datos recopilamos</h2>
     <ul>
-      <li><strong>Datos de tu cuenta:</strong> nombre, teléfono, correo electrónico y contraseña. La contraseña se guarda cifrada y nadie, ni siquiera la barbería, puede verla.</li>
+      <li><strong>Datos de tu cuenta:</strong> nombre, teléfono, correo electrónico y contraseña. La contraseña se guarda cifrada y nadie, ni siquiera {{place}}, puede verla.</li>
       <li><strong>Tus citas:</strong> servicios, día, hora, estado de la cita y las notas que escribas.</li>
       <li><strong>Cómo nos conociste</strong>, si decides contarnos.</li>
       <li><strong>Datos técnicos mínimos</strong> para que la app funcione y sea segura, como una cookie de sesión y registros de acceso.</li>

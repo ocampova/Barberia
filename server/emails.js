@@ -10,6 +10,13 @@ function longDate(day) {
   return d.toLocaleDateString("es-CR", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 }
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+// Mezcla un color con el fondo oscuro (para fondos suaves compatibles con todos los correos).
+function mix(hex, alpha, bg = [11, 10, 9]) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || "");
+  if (!m) return "#2a2312";
+  const n = parseInt(m[1], 16), c = [n >> 16, (n >> 8) & 255, n & 255];
+  return "#" + c.map((v, i) => Math.round(v * alpha + bg[i] * (1 - alpha)).toString(16).padStart(2, "0")).join("");
+}
 
 const KINDS = {
   recibida: {
@@ -67,7 +74,7 @@ function render(kind, b, config, { link = null, siteUrl = null, byClient = false
     first: b.name.split(" ")[0],
     whenShort: `${longDate(b.day).split(",")[0]} a las ${fmtTime(b.start)}`,
     byClient,
-    brand: (cat && cat.brand) || `${config.name} Barbería`,
+    brand: (cat && cat.brand) || config.name,
     place: (cat && cat.place) || "la barbería",
   };
   const total = b.total == null ? "Por confirmar" : config.currency + b.total.toLocaleString("es-CR");
@@ -83,8 +90,10 @@ function render(kind, b, config, { link = null, siteUrl = null, byClient = false
   const button = active && link ? { href: link, label: "Ver o cancelar mi cita" }
     : !active && siteUrl ? { href: siteUrl, label: k.cta || "Reservar" } : null;
   // Los correos no pueden mostrar SVG: se usa el PNG publicado por la app.
-  const logoUrl = siteUrl || (link ? new URL(link).origin : null) ? `${siteUrl || new URL(link).origin}/img/logos-email.png` : null;
-  const gold = "#c9a227", bg = "#0b0a09", card = "#151311", line = "#2b2622", text = "#f3eee6", muted = "#a39a8e";
+  const origin = siteUrl || (link ? new URL(link).origin : null);
+  const logoUrl = origin && config.logos?.email ? `${origin}/${config.logos.email}` : null;
+  const gold = config.theme?.accent || "#c9a227", ink = config.theme?.ink || "#1a1405";
+  const bg = "#0b0a09", card = "#151311", line = "#2b2622", text = "#f3eee6", muted = "#a39a8e";
 
   const html = `<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
@@ -95,13 +104,13 @@ function render(kind, b, config, { link = null, siteUrl = null, byClient = false
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;font-family:Helvetica,Arial,sans-serif;color:${text};">
   <tr><td align="center" style="padding:6px 0 22px;">
     ${logoUrl
-      ? `<img src="${esc(logoUrl)}" width="300" height="132" alt="${esc(config.name)} Barbería · ${esc(config.partner)}" style="display:block;width:300px;max-width:80%;height:auto;border:0;">`
+      ? `<img src="${esc(logoUrl)}" width="140" height="140" alt="${esc(config.name)}" style="display:block;width:140px;height:auto;border:0;">`
       : `<div style="font:bold 18px Helvetica,Arial,sans-serif;letter-spacing:3px;text-transform:uppercase;color:${text};">${esc(config.name)}</div>
     <div style="margin-top:4px;font-size:11px;letter-spacing:4px;text-transform:uppercase;color:${gold};">${esc(config.tagline)}</div>`}
   </td></tr>
   <tr><td style="background:${card};border:1px solid ${gold};border-radius:18px;padding:30px 24px;">
     <div style="text-align:center;">
-      <span style="display:inline-block;padding:5px 12px;border-radius:999px;background:#2a2312;color:${gold};font-size:12px;letter-spacing:1px;text-transform:uppercase;">${esc(k.badge)}</span>
+      <span style="display:inline-block;padding:5px 12px;border-radius:999px;background:${mix(gold, 0.18)};color:${gold};font-size:12px;letter-spacing:1px;text-transform:uppercase;">${esc(k.badge)}</span>
       <h1 style="margin:18px 0 8px;font-size:24px;color:${text};">${esc(k.title(ctx))}</h1>
       <p style="margin:0 0 22px;font-size:15px;line-height:1.5;color:${muted};">${esc(k.lead(ctx))}</p>
       <div style="font:bold 40px Helvetica,Arial,sans-serif;color:${text};">${esc(fmtTime(b.start))}</div>
@@ -114,7 +123,7 @@ function render(kind, b, config, { link = null, siteUrl = null, byClient = false
       </tr>`).join("")}
     </table>
     ${button ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:24px;"><tr><td align="center" style="border-radius:999px;background:${gold};">
-      <a href="${esc(button.href)}" style="display:block;padding:15px 20px;color:#1a1405;font-weight:bold;font-size:15px;text-decoration:none;">${esc(button.label)}</a>
+      <a href="${esc(button.href)}" style="display:block;padding:15px 20px;color:${ink};font-weight:bold;font-size:15px;text-decoration:none;">${esc(button.label)}</a>
     </td></tr></table>` : ""}
     ${k.calendar ? `<p style="margin:16px 0 0;text-align:center;font-size:13px;color:${muted};">Adjuntamos la invitación para agregarla a tu calendario.</p>` : ""}
   </td></tr>
@@ -142,7 +151,7 @@ function render(kind, b, config, { link = null, siteUrl = null, byClient = false
 }
 
 // Invitación de calendario (.ics). Costa Rica no tiene horario de verano: UTC-6 todo el año.
-function ics(b, config, svcNames, brand = `${config.name} Barbería`) {
+function ics(b, config, svcNames, brand = config.name) {
   const pad = (n) => String(n).padStart(2, "0");
   const toUtc = (min) => {
     const d = new Date(`${b.day}T00:00:00-06:00`);
@@ -166,7 +175,7 @@ function ics(b, config, svcNames, brand = `${config.name} Barbería`) {
 
 // Correo para restablecer la contraseña.
 function renderReset(user, config, link) {
-  const gold = "#c9a227", text = "#f3eee6", muted = "#a39a8e";
+  const gold = config.theme?.accent || "#c9a227", ink = config.theme?.ink || "#1a1405", text = "#f3eee6", muted = "#a39a8e";
   const first = esc(user.name.split(" ")[0]);
   const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
 <body style="margin:0;background:#0b0a09;">
@@ -174,14 +183,14 @@ function renderReset(user, config, link) {
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;font-family:Helvetica,Arial,sans-serif;color:${text};">
 <tr><td style="background:#151311;border:1px solid ${gold};border-radius:18px;padding:30px 24px;text-align:center;">
   <h1 style="margin:0 0 10px;font-size:22px;">Hola ${first}</h1>
-  <p style="margin:0 0 22px;font-size:15px;line-height:1.5;color:${muted};">Recibimos una solicitud para cambiar la contraseña de tu cuenta en ${esc(config.name)} Barbería. El enlace vence en 1 hora.</p>
+  <p style="margin:0 0 22px;font-size:15px;line-height:1.5;color:${muted};">Recibimos una solicitud para cambiar la contraseña de tu cuenta en ${esc(config.name)}. El enlace vence en 1 hora.</p>
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="border-radius:999px;background:${gold};">
-    <a href="${esc(link)}" style="display:block;padding:15px 20px;color:#1a1405;font-weight:bold;font-size:15px;text-decoration:none;">Crear contraseña nueva</a>
+    <a href="${esc(link)}" style="display:block;padding:15px 20px;color:${ink};font-weight:bold;font-size:15px;text-decoration:none;">Crear contraseña nueva</a>
   </td></tr></table>
   <p style="margin:18px 0 0;font-size:13px;color:${muted};">Si no lo pediste, ignora este correo: tu contraseña no cambia.</p>
 </td></tr></table></td></tr></table></body></html>`;
   const textBody = `Hola ${user.name.split(" ")[0]},\n\nPara crear una contraseña nueva abre este enlace (vence en 1 hora):\n${link}\n\nSi no lo pediste, ignora este correo.`;
-  return { subject: `Cambia tu contraseña · ${config.name} Barbería`, html, text: textBody };
+  return { subject: `Cambia tu contraseña · ${config.name}`, html, text: textBody };
 }
 
 module.exports = { render, renderReset, ics };

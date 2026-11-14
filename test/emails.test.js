@@ -1,7 +1,7 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const config = require("../server/config");
+const config = require("./fixtures/dos-agendas");
 const { render, ics } = require("../server/emails");
 
 const b = { id: "abc123", token: "t", category: "barberia", day: "2026-10-02", start: 18 * 60, minutes: 50,

@@ -2,7 +2,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const http = require("node:http");
-const config = require("../server/config");
+const config = require("./fixtures/dos-agendas");
 const { openDb, repo } = require("../server/db");
 const { createApp } = require("../server/app");
 

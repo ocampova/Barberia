@@ -10,7 +10,7 @@ const { DatabaseSync } = require("node:sqlite");
 const { openDb, repo } = require("../server/db");
 const { createBackups, signV4, sha256hex } = require("../server/backup");
 const { createApp } = require("../server/app");
-const config = require("../server/config");
+const config = require("./fixtures/dos-agendas");
 
 const tmpDir = (t) => { const d = fs.mkdtempSync(path.join(os.tmpdir(), "bk-")); t.after(() => fs.rmSync(d, { recursive: true, force: true })); return d; };
 

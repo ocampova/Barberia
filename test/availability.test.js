@@ -2,7 +2,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { freeSlots, checkRanges } = require("../server/availability");
-const config = require("../server/config");
+const config = require("./fixtures/dos-agendas");
 
 // 2026-11-10 es martes: abre 9:00 a 19:00.
 const DAY = "2026-11-10";

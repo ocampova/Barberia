@@ -34,7 +34,7 @@ function limiter(max, windowMs) {
   };
 }
 
-function createApp({ repo, config, env = process.env, clock = () => new Date(), notify, mailer, backups = null }) {
+function createApp({ repo, config, env = process.env, clock = () => new Date(), notify, mailer, backups = null, related = [] }) {
   /* ---------- Servicios ---------- */
   // La primera vez se copian de config.services. Después se administran desde el panel.
   if (!repo.serviceCount()) {
@@ -254,10 +254,11 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
   route("GET", "/api/health", () => ({ ok: true }));
 
   route("GET", "/api/config", () => {
-    const { name, tagline, partner, slogan, location, mapsUrl, phone, whatsapp, currency,
-      slotStepMinutes, daysAhead, policies, categories } = config;
+    const { slug, name, shortName, tagline, place, hero, slogan, city, location, mapsUrl, phone, whatsapp, currency,
+      slotStepMinutes, daysAhead, policies, categories, theme, logos } = config;
     const all = repo.services();
-    return { name, tagline, partner, slogan, location, mapsUrl, phone, whatsapp, currency,
+    return { slug, name, shortName: shortName || name, tagline, place, dePlace: dePlace(place), hero, slogan, city, location, mapsUrl, phone, whatsapp, currency,
+      theme, logos, related,
       slotStepMinutes, daysAhead, policies,
       categories: categories.map(({ id, name, staff, brand, place }) => ({ id, name, staff: staff || null, brand: brand || name, place: place || null })),
       status: openStatus(categories[0].id),
@@ -724,7 +725,62 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     res.end(JSON.stringify(data));
   }
 
+  /* ---------- Marca del negocio en las páginas ---------- */
+  // Las páginas HTML llevan marcadores {{…}} que se reemplazan con los datos del negocio,
+  // y <!--MARCA--> donde se insertan los colores, el ícono y el manifest. Así cada negocio
+  // ve su marca desde el primer instante, sin parpadeos.
+  const hexRgb = (h) => { const m = /^#?([0-9a-f]{6})$/i.exec(h || ""); if (!m) return "201,162,39";
+    const n = parseInt(m[1], 16); return `${n >> 16},${(n >> 8) & 255},${n & 255}`; };
+  const escHtml = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const cap = (s) => String(s || "").charAt(0).toUpperCase() + String(s || "").slice(1);
+  // "de" + lugar, con contracción: "del salón", "de la barbería".
+  function dePlace(p) { p = p || "el negocio"; return p.startsWith("el ") ? "del " + p.slice(3) : "de " + p; }
+  const brandTokens = {
+    name: config.name, shortName: config.shortName || config.name, tagline: config.tagline || "",
+    place: config.place || "el negocio", Place: cap(config.place || "el negocio"), dePlace: dePlace(config.place),
+    heroTitle: config.hero?.title || "", heroAccent: config.hero?.accent || "",
+    slogan: config.slogan || "", city: config.city || config.location || "", location: config.location || "",
+    mapsUrl: config.mapsUrl || "#", whatsapp: config.whatsapp || "", description: config.description || config.name,
+    phoneFmt: String(config.phone || "").replace(/(\d{4})(\d{4})/, "$1 $2"),
+    logo: config.logos.main,
+  };
+  const brandHead = [
+    // "html:root" pesa más que el ":root" de styles.css, que se carga después.
+    `<style>html:root{--gold:${config.theme.accent};--gold-2:${config.theme.accent2};--gold-ink:${config.theme.ink};` +
+      `--accent-rgb:${hexRgb(config.theme.accent)};--accent2-rgb:${hexRgb(config.theme.accent2)}}</style>`,
+    `<link rel="icon" href="${escHtml(config.logos.main)}" type="image/svg+xml" />`,
+    config.logos.icon192 ? `<link rel="icon" href="${escHtml(config.logos.icon192)}" sizes="192x192" type="image/png" />` : "",
+    config.logos.apple ? `<link rel="apple-touch-icon" href="${escHtml(config.logos.apple)}" />` : "",
+    `<link rel="manifest" href="manifest.webmanifest" />`,
+    `<meta name="theme-color" content="#0b0a09" />`,
+  ].filter(Boolean).join("\n  ");
+  const pageCache = new Map();
+  function renderPage(file, st) {
+    const hit = pageCache.get(file);
+    if (hit && hit.mtime === st.mtimeMs) return hit;
+    const html = fs.readFileSync(file, "utf8")
+      .replace("<!--MARCA-->", brandHead)
+      .replace(/\{\{(\w+)\}\}/g, (m, k) => (k in brandTokens ? escHtml(brandTokens[k]) : m));
+    const out = { mtime: st.mtimeMs, body: Buffer.from(html), etag: `W/"${crypto.createHash("sha1").update(html).digest("hex").slice(0, 16)}"` };
+    pageCache.set(file, out);
+    return out;
+  }
+
+  function manifest() {
+    const icons = [
+      config.logos.icon192 && { src: config.logos.icon192, sizes: "192x192", type: "image/png" },
+      config.logos.icon512 && { src: config.logos.icon512, sizes: "512x512", type: "image/png" },
+      { src: config.logos.main, sizes: "any", type: "image/svg+xml" },
+    ].filter(Boolean);
+    return { name: config.name, short_name: config.shortName || config.name, description: config.description || config.name,
+      start_url: "/", display: "standalone", background_color: "#0b0a09", theme_color: "#0b0a09", icons };
+  }
+
   function serveStatic(req, res, pathname) {
+    if (pathname === "/manifest.webmanifest") {
+      res.writeHead(200, { "content-type": "application/manifest+json", "cache-control": "no-cache" });
+      return res.end(JSON.stringify(manifest()));
+    }
     if (pathname === "/admin" || pathname === "/admin/") pathname = "/admin.html";
     if (pathname.endsWith("/")) pathname += "index.html";
     const file = path.normalize(path.join(PUBLIC_DIR, decodeURIComponent(pathname)));
@@ -735,6 +791,13 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
         return res.end("No encontrado");
       }
       const ext = path.extname(file);
+      if (ext === ".html") {
+        const page = renderPage(file, st);
+        const h = { "content-type": MIME[ext], "cache-control": "no-cache", etag: page.etag };
+        if (req.headers["if-none-match"] === page.etag) { res.writeHead(304, h); return res.end(); }
+        res.writeHead(200, h);
+        return res.end(req.method === "HEAD" ? undefined : page.body);
+      }
       // "no-cache": el navegador siempre pregunta si hay una versión nueva; si no cambió,
       // responde 304 sin reenviar el archivo. Así nunca queda una versión vieja de la app.
       const etag = `W/"${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}"`;

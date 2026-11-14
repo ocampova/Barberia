@@ -113,7 +113,7 @@
       $("#team-list").innerHTML = admins.map((a) => `<div class="team-row">
           <div><strong>${esc(a.name)}${a.id === ME.id ? ' <span class="tag tag--gold">Tú</span>' : ""}</strong>
             <small>${esc(a.email)}</small></div>
-          <select class="team-agenda" data-team-agenda="${a.id}" aria-label="Agenda que atiende ${esc(a.name)}">
+          <select class="team-agenda" ${C.categories.length < 2 ? "hidden" : ""} data-team-agenda="${a.id}" aria-label="Agenda que atiende ${esc(a.name)}">
             <option value="">Todas las agendas</option>
             ${C.categories.map((c) => `<option value="${c.id}" ${a.agenda === c.id ? "selected" : ""}>${esc(catLabel(c.id))}</option>`).join("")}
           </select>
@@ -142,7 +142,7 @@
     const first = b.name.split(" ")[0];
     const when = `el ${longDate(b.day)} a las ${fmtTime(b.start)}`;
     const cat = C.categories.find((c) => c.id === b.category) || {};
-    const brand = cat.brand || `${C.name} Barbería`;
+    const brand = cat.brand || C.name;
     const withStaff = cat.staff ? ` con ${cat.staff}` : "";
     const text = {
       confirmada: `¡Hola ${first}! Tu cita en ${brand} para ${svcNames(b.services)}${withStaff} quedó CONFIRMADA ${when} ¡Te esperamos! 💈`,
@@ -185,7 +185,7 @@
         <span class="bk__time">${showDate ? DOW[asDate(b.day).getDay()] + " " + asDate(b.day).getDate() + " · " : ""}${fmtTime(b.start)} – ${fmtTime(b.start + b.minutes)}</span>
         <span class="bk__status bk__status--${b.status}">${STATUS[b.status]}</span>
       </div>
-      <p class="bk__name">${esc(b.name)}${!agendaFilter ? ` <span class="tag tag--cat">${esc(catLabel(b.category))}</span>` : ""}</p>
+      <p class="bk__name">${esc(b.name)}${!agendaFilter && C.categories.length > 1 ? ` <span class="tag tag--cat">${esc(catLabel(b.category))}</span>` : ""}</p>
       <p class="bk__meta">${esc(svcNames(b.services))} · ${fmtMoney(b.total)}</p>
       <p class="bk__meta">${phone}${b.source === "panel" ? " · agregada en el panel" : ""}</p>
       ${b.email ? `<p class="bk__meta">✉ ${esc(b.email)}</p>` : ""}
@@ -252,7 +252,7 @@
       $("#new-email").hidden = !mailOn;
       const badge = $("#badge");
       badge.hidden = !pending; badge.textContent = pending;
-      document.title = (pending ? `(${pending}) ` : "") + "Panel · Barbería";
+      document.title = (pending ? `(${pending}) ` : "") + `Panel · ${C.shortName || C.name}`;
       if (lastPending != null && pending > lastPending) {
         toast("Nueva reserva por confirmar");
         if ("Notification" in window && Notification.permission === "granted") new Notification("Nueva reserva", { body: "Tienes citas por confirmar." });
@@ -354,7 +354,7 @@
   function saveFilter() { try { localStorage.setItem("va-agenda-filter", agendaFilter); } catch {} }
   function renderAgendaFilter() {
     const el = $("#agenda-filter");
-    el.hidden = !["pending", "agenda"].includes(view);
+    el.hidden = !["pending", "agenda"].includes(view) || !C || C.categories.length < 2;
     if (el.hidden || !C) return;
     el.innerHTML = [`<button type="button" data-agenda-filter="" class="${agendaFilter === "" ? "is-active" : ""}">Todas</button>`]
       .concat(C.categories.map((c) => `<button type="button" data-agenda-filter="${c.id}" class="${agendaFilter === c.id ? "is-active" : ""}" title="${esc(catLabel(c.id))}">${esc(c.staff ? c.staff.split(" ")[0] : c.name)}</button>`))
@@ -470,6 +470,7 @@
     if (calMonth < minMonth) calMonth = minMonth;
     if (calMonth > maxMonth) calMonth = maxMonth;
 
+    $("#sch-cats").hidden = C.categories.length < 2;
     $("#sch-cats").innerHTML = C.categories.map((c) =>
       `<button class="${c.id === schCategory ? "is-active" : ""}" data-schcat="${c.id}" role="tab">${esc(c.name)}</button>`).join("");
 

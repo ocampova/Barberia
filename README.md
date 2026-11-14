@@ -29,12 +29,28 @@ Barbero (/admin)   ◄───────────┘   + aviso push opcion
 3. En `/admin` el barbero toca **Confirmar** o **Rechazar**. Si el cliente dejó correo, el aviso le llega por ahí; si no, se abre WhatsApp con el mensaje ya escrito.
 4. En "Mis citas", el cliente ve el estado de su cita (pendiente, confirmada…) y puede cancelarla, lo que libera el espacio.
 
-### Dos agendas: barbería y salón
+### Plataforma multi-negocio
 
-Cada categoría es una **agenda separada**, con su horario y su cupo: **Víctor Aguilar** atiende la barbería y **Seidy Matamoros**, Seimar Salón. Una cita del salón nunca ocupa un espacio de la barbería.
-- **El cliente ve quién lo atiende** al elegir servicios, al reservar, en el ticket, en "Mis citas", en los correos y en WhatsApp. Cada agenda usa su nombre comercial ("Víctor Aguilar Barbería" o "Seimar Salón").
-- **En el panel**, cada cuenta del equipo se asigna a su agenda en **Ajustes → Equipo**. Al entrar, cada quien ve sus pendientes, su agenda y su horario. El filtro **Todas / Víctor / Seidy** permite ver la otra agenda.
-- Los nombres se cambian en `server/config.js` (`staff`, `brand` y `place` de cada categoría).
+Un solo servidor atiende a **varios negocios independientes**, cada uno en su dirección:
+
+| Negocio | Dirección | Profesional |
+|---|---|---|
+| Víctor Aguilar Barbería | `victoraguilar.elcorte.app` | Víctor Aguilar |
+| Seimar Salón | `seimar.elcorte.app` | Seidy Matamoros |
+
+- **Cada negocio tiene su propia base de datos:** clientes, citas, servicios, horario, ajustes y equipo. Los clientes de un negocio no existen en otro, aunque usen el mismo correo, y la sesión de uno no abre el otro.
+- **Marca por negocio:** nombre, logo, colores (`theme`), frase de portada (`hero`), lema, ubicación, teléfono, políticas, ícono de la app, manifest, correos y aviso de privacidad. El diseño de las pantallas es el mismo para todos.
+- **Negocios relacionados:** la tarjeta "En el mismo local" (`related`) enlaza a la app del otro negocio.
+- **El dueño de la plataforma** (`ADMIN_EMAIL`) se crea como administrador en cada negocio. Cada negocio suma a su equipo en **Ajustes → Equipo**.
+- Dentro de un negocio sigue habiendo **agendas** (`categories`): un negocio con varias sillas o profesionales puede tener varias, cada una con su horario y su cupo.
+
+**Agregar un negocio nuevo:**
+1. Copia `server/negocios/seimar.js` como `server/negocios/<slug>.js` y cambia la marca, los servicios y la agenda.
+2. Pon su logo en `public/img/negocios/<slug>/logo.svg` y genera los íconos con `node brand/export.js`.
+3. Agrégalo a la lista en `server/negocios/index.js`.
+4. En Railway, ve a **Settings → Networking → Custom Domain** y escribe `<slug>.elcorte.app`, con su CNAME en Cloudflare.
+
+La primera vez que arrancó la plataforma, una **migración** pasó los datos del salón (servicios, horario, citas y las cuentas de quienes reservaron ahí) de la base de Víctor a la de Seimar, después de guardar una copia de seguridad (`/data/backups/antes-de-separar-salon-*.db`).
 
 ### Cuentas de clientes
 
@@ -126,7 +142,8 @@ Las variables están explicadas en `.env.example`. Importante: haz copias de seg
 
 | Archivo | Qué es |
 |---|---|
-| `server/config.js` | Datos del negocio, políticas, capacidad, y servicios y horario **iniciales** (después se editan en el panel) |
+| `server/negocios/` | Un archivo por negocio: marca, contacto, políticas, agendas, y servicios y horario **iniciales** (después se editan en el panel) |
+| `server/platform.js` | Elige el negocio según la dirección, abre su base de datos y hace las migraciones |
 | `server/auth.js` | Contraseñas y sesiones |
 | `server/backup.js` | Copias de seguridad diarias, locales y externas (S3/R2) |
 | `server/app.js` | La API: disponibilidad, reservas y panel |
@@ -159,7 +176,7 @@ Las variables están explicadas en `.env.example`. Importante: haz copias de seg
 
 - **Panel:** se entra con una cuenta de rol administrador (correo o teléfono y contraseña), igual que los clientes. Una cuenta de cliente no puede entrar.
   - El primer administrador se crea con `ADMIN_EMAIL` y `ADMIN_PASSWORD`. Nunca se convierte en administrador una cuenta que ya existía, porque alguien pudo registrarla antes con ese correo.
-  - Para dar o quitar acceso, desde el panel: **Equipo**. Desde la terminal del servidor: `npm run admin -- correo@ejemplo.com` (o `--quitar`).
+  - Para dar o quitar acceso, desde el panel: **Ajustes → Equipo**. Desde la terminal del servidor: `npm run admin -- <negocio> correo@ejemplo.com` (o `--quitar`).
   - Quitarle el acceso a alguien cierra sus sesiones abiertas.
 - **Cuentas de clientes:**
   - Las contraseñas se guardan cifradas con scrypt.
@@ -173,7 +190,7 @@ Las variables están explicadas en `.env.example`. Importante: haz copias de seg
 
 ## Pendiente de confirmar con la barbería
 
-- **Horarios reales:** se configuran desde el panel, en **Horario**. `server/config.js` solo trae el horario inicial: lunes a viernes de 9:00 a 19:00, sábado de 8:00 a 17:00 y domingo cerrado.
+- **Horarios reales:** se configuran desde el panel, en **Horario**. `server/negocios/<negocio>.js` solo trae el horario inicial: lunes a viernes de 9:00 a 19:00, sábado de 8:00 a 17:00 y domingo cerrado.
 - **Precios de Seimar Salón:** aparecen como "Consultar".
-- **Cuántos barberos atienden a la vez:** `capacity` en `server/config.js`. Ahora es 1.
+- **Cuántos barberos atienden a la vez:** `capacity` de cada agenda en `server/negocios/<negocio>.js`. Ahora es 1.
 - **El logo real:** en lugar del monograma "VA" provisional.
