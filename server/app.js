@@ -877,7 +877,8 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
       const ext = path.extname(file);
       if (ext === ".html") {
         const page = renderPage(file, st);
-        const h = { "content-type": MIME[ext], "cache-control": "no-cache", etag: page.etag };
+        // no-transform: Cloudflare no inyecta su script de analítica (un tercero que los navegadores bloquean)
+        const h = { "content-type": MIME[ext], "cache-control": "no-cache, no-transform", etag: page.etag };
         if (req.headers["if-none-match"] === page.etag) { res.writeHead(304, h); return res.end(); }
         res.writeHead(200, h);
         return res.end(req.method === "HEAD" ? undefined : page.body);

@@ -237,3 +237,13 @@ test("archivos con versión: un proxy con caché larga nunca sirve una copia vie
   assert.match(plat, /href="css\/plataforma\.css\?v=[0-9a-f]{10}"/);
   assert.match(plat, /src="js\/plataforma\.js\?v=[0-9a-f]{10}"/);
 });
+
+test("las páginas piden no-transform (sin scripts de analítica inyectados por el proxy)", async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "nt-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const p = createPlatform({ negocios, dataDir: dir, env: { PUBLIC_URL: "https://victoraguilar.elcorte.app" }, clock, log: quiet, mailer: { enabled: false, send() {} } });
+  t.after(() => p.close());
+  const call = await serve(t, p.handler);
+  for (const [host, url] of [["seimar.elcorte.app", "/"], ["seimar.elcorte.app", "/admin"], ["victoraguilar.elcorte.app", "/privacidad.html"], ["plataforma.elcorte.app", "/"]])
+    assert.match((await call(host, "GET", url)).headers["cache-control"], /no-transform/, host + url);
+});

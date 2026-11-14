@@ -307,7 +307,7 @@ function createPlatformAdmin({ tenants, pdb, env = process.env, log = console, c
     const file = path.normalize(path.join(PUBLIC_DIR, pathname));
     if (!file.startsWith(PUBLIC_DIR + path.sep) || !fs.existsSync(file)) { res.writeHead(404); return res.end(); }
     if (pathname === "/plataforma.html") {
-      res.writeHead(200, { "content-type": MIME[".html"], "cache-control": "no-cache" });
+      res.writeHead(200, { "content-type": MIME[".html"], "cache-control": "no-cache, no-transform" });
       return res.end(assets.rewriteHtml(fs.readFileSync(file, "utf8")));
     }
     res.writeHead(200, { "content-type": MIME[path.extname(file)] || "application/octet-stream",
