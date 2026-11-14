@@ -60,7 +60,7 @@ test("cada dirección muestra su negocio; un subdominio desconocido no existe", 
   assert.equal((await call("nadie.elcorte.app", "GET", "/")).status, 404);
   const s = (await call("seimar.elcorte.app", "GET", "/api/config")).body;
   assert.equal(s.name, "Seimar Salón");
-  assert.equal(s.theme.accent, "#c8917c");
+  assert.equal(s.theme.accent, "#b87a63");
   assert.deepEqual(s.categories.map((c) => c.staff), ["Seidy Matamoros"]);
   assert.ok(s.services.every((x) => x.cat === "salon"));
   assert.deepEqual(s.related.map((r) => [r.name, r.url]), [["Víctor Aguilar Barbería", "https://victoraguilar.elcorte.app"]]);
@@ -76,7 +76,15 @@ test("las páginas llevan la marca de su negocio (sin rastros del otro)", async 
   const call = await serve(t, p.handler);
   const home = (await call("seimar.elcorte.app", "GET", "/")).text;
   assert.match(home, /<title>Seimar Salón · Reservas<\/title>/);
-  assert.match(home, /html:root\{--gold:#c8917c/);
+  assert.match(home, /html:root\{--gold:#b87a63/);
+  // Fondo claro: la paleta completa, el color del navegador y el manifest
+  assert.match(home, /--bg:#faf6f1;.*--text:#3a2a24;/);
+  assert.match(home, /html\{color-scheme:light\}/);
+  assert.match(home, /<meta name="theme-color" content="#faf6f1" \/>/);
+  assert.equal(JSON.parse((await call("seimar.elcorte.app", "GET", "/manifest.webmanifest")).text).background_color, "#faf6f1");
+  // La barbería sigue oscura
+  const vhome0 = (await call("victoraguilar.elcorte.app", "GET", "/")).text;
+  assert.ok(!/--bg:/.test(vhome0) && /<meta name="theme-color" content="#0b0a09" \/>/.test(vhome0));
   assert.match(home, /img\/negocios\/seimar\/logo\.svg/);
   assert.match(home, /Tu belleza,<br \/><em>nuestro arte<\/em>/);
   assert.ok(!/Víctor|\{\{/.test(home.replace(/<script[\s\S]*?<\/script>/g, "")), "no debe quedar nada de Víctor ni marcadores sin reemplazar");

@@ -92,7 +92,7 @@
     $("#wa-link").href = `https://wa.me/${B.whatsapp}`;
     $("#related").innerHTML = (B.related || []).map((r) => `
       <a class="related" href="${esc(r.url)}">
-        <img src="${esc(r.logo)}" width="56" height="56" alt="" />
+        <img src="${esc(r.logo)}" width="56" height="56" alt="" style="background:${esc(r.logoBg || "transparent")}" />
         <span><small>En el mismo local</small><strong>${esc(r.name)}</strong><em>${esc(r.pitch)}</em></span>
         <span class="related__go" aria-hidden="true">›</span>
       </a>`).join("");

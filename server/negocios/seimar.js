@@ -18,8 +18,15 @@ module.exports = {
   phone: "83704499",          // por confirmar: teléfono / WhatsApp propio del salón
   whatsapp: "50683704499",
 
-  // Negro con rosa dorado (provisional, se cambia aquí).
-  theme: { accent: "#c8917c", accent2: "#e9c0ae", ink: "#2a1510" },
+  // Crema y rosa dorado, con fondo claro.
+  theme: {
+    accent: "#b87a63", accent2: "#9a5c47", ink: "#ffffff",
+    palette: {
+      scheme: "light", bg: "#faf6f1", surface: "#ffffff", surface2: "#f3ece4", line: "#e9dfd5", text: "#3a2a24",
+      muted: "#8a776c", muted2: "#b3a497", heroTop: "#f1e3d8", backdrop: "#efe7df", warn: "#a8641c",
+      shadow: "rgba(80, 50, 30, .12)", ok: "#3f9a63", danger: "#c0533f",
+    },
+  },
   logos: {
     main: "img/negocios/seimar/logo.svg",
     email: "img/negocios/seimar/email.png",

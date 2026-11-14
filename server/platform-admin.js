@@ -213,7 +213,7 @@ function createPlatformAdmin({ tenants, pdb, env = process.env, log = console, c
   route("GET", "/api/plataforma/negocios", () => ({
     negocios: tenants.map((t) => ({
       slug: t.slug, name: t.config.name, place: t.config.place, url: t.url, logo: t.config.logos.main,
-      accent: t.config.theme.accent, contact: t.app.contact(), staff: t.config.categories.map((c) => c.staff).filter(Boolean),
+      accent: t.config.theme.accent, logoBg: t.config.theme.palette?.bg || "#0b0a09", contact: t.app.contact(), staff: t.config.categories.map((c) => c.staff).filter(Boolean),
       stats: stats(t),
     })),
   }));

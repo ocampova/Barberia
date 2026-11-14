@@ -3,7 +3,7 @@
   <title id="title">Seimar · Salón</title>
   <desc id="desc">Reconstrucción vectorial a partir de una referencia de baja resolución. Letras convertidas en contornos; sin imágenes rasterizadas ni fuentes externas.</desc>
   
-  <g id="logo" fill="#fff">
+  <g id="logo" fill="#9a5c47">
 <g id="simbolo">
 <path d="M202.15 21.95 C208.35 21.95 213.4 26.95 213.4 33.15 V47.9 C213.4 54.1 208.35 59.15 202.15 59.15 C195.94 59.15 190.9 54.1 190.9 47.9 V33.15 C190.9 26.95 195.94 21.95 202.15 21.95 Z" fill="none" stroke="#fff" stroke-width="0.72"/>
 <path id="cabello" d="M205.35 26.25 C202.7 28.43 201.88 30.95 202.15 33.26 C202.58 36.86 205.26 40.33 207.54 43.42 C210.01 46.75 210.44 49.45 208.17 52.16 C205.98 54.78 201.56 55.43 198.92 54.93 C201.94 54.56 204.25 53.12 204.79 51.08 C205.57 48.1 203.23 43.89 201.18 40.11 C199.06 36.18 198.29 33.04 199.37 30.4 C200.45 27.76 202.62 26.47 205.35 26.25 Z"/>

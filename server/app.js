@@ -767,15 +767,23 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     phoneFmt: String(config.phone || "").replace(/(\d{4})(\d{4})/, "$1 $2"),
     logo: config.logos.main,
   };
+  // Paleta completa opcional (theme.palette): permite negocios con fondo claro. Sin paleta, se usa la oscura de styles.css.
+  const PALETTE_VARS = { bg: "bg", surface: "surface", surface2: "surface-2", line: "line", text: "text", muted: "muted",
+    muted2: "muted-2", heroTop: "hero-top", backdrop: "backdrop", warn: "warn", shadow: "shadow", ok: "ok", danger: "danger" };
+  const palette = config.theme.palette || {};
+  const paletteCss = Object.entries(PALETTE_VARS).filter(([k]) => palette[k]).map(([k, v]) => `--${v}:${palette[k]};`).join("") +
+    (palette.bg ? `--bg-rgb:${hexRgb(palette.bg)};` : "");
+  const bgColor = palette.bg || "#0b0a09";
   const brandHead = [
     // "html:root" pesa más que el ":root" de styles.css, que se carga después.
     `<style>html:root{--gold:${config.theme.accent};--gold-2:${config.theme.accent2};--gold-ink:${config.theme.ink};` +
-      `--accent-rgb:${hexRgb(config.theme.accent)};--accent2-rgb:${hexRgb(config.theme.accent2)}}</style>`,
+      `--accent-rgb:${hexRgb(config.theme.accent)};--accent2-rgb:${hexRgb(config.theme.accent2)};${paletteCss}}` +
+      (palette.scheme === "light" ? "html{color-scheme:light}" : "") + `</style>`,
     `<link rel="icon" href="${escHtml(config.logos.main)}" type="image/svg+xml" />`,
     config.logos.icon192 ? `<link rel="icon" href="${escHtml(config.logos.icon192)}" sizes="192x192" type="image/png" />` : "",
     config.logos.apple ? `<link rel="apple-touch-icon" href="${escHtml(config.logos.apple)}" />` : "",
     `<link rel="manifest" href="manifest.webmanifest" />`,
-    `<meta name="theme-color" content="#0b0a09" />`,
+    `<meta name="theme-color" content="${escHtml(bgColor)}" />`,
   ].filter(Boolean).join("\n  ");
   const pageCache = new Map();
 
@@ -846,7 +854,7 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
       { src: config.logos.main, sizes: "any", type: "image/svg+xml" },
     ].filter(Boolean);
     return { name: config.name, short_name: config.shortName || config.name, description: config.description || config.name,
-      start_url: "/", display: "standalone", background_color: "#0b0a09", theme_color: "#0b0a09", icons };
+      start_url: "/", display: "standalone", background_color: bgColor, theme_color: bgColor, icons };
   }
 
   function serveStatic(req, res, pathname) {

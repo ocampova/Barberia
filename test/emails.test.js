@@ -52,3 +52,17 @@ test("pie del correo: Instagram y Facebook solo si el negocio los tiene", () => 
   assert.match(con.html, /href="https:\/\/instagram\.com\/victoraguilarbarberia"[^>]*>Instagram @victoraguilarbarberia</);
   assert.match(con.html, /href="https:\/\/www\.facebook\.com\/VictorAguilarBarberia"/);
 });
+
+test("correos con la paleta del negocio: fondo claro para Seimar, oscuro por defecto", () => {
+  const claro = { ...config, theme: { accent: "#b87a63", ink: "#ffffff", palette: { scheme: "light", bg: "#faf6f1", surface: "#ffffff", line: "#e9dfd5", text: "#3a2a24", muted: "#8a776c" } } };
+  const m = render("confirmada", b, claro, { link: "https://x/?citas=1" });
+  assert.match(m.html, /<body style="margin:0;padding:0;background:#faf6f1;">/);
+  assert.match(m.html, /background:#ffffff;border:1px solid #b87a63/);
+  assert.match(m.html, /color:#3a2a24/);
+  assert.match(m.html, /content="light"/);
+  const r = renderReset({ name: "Ana" }, claro, "https://seimar.elcorte.app/?reset=x");
+  assert.match(r.html, /background:#faf6f1/);
+  const oscuro = render("confirmada", b, config, { link: "https://x/?citas=1" });
+  assert.match(oscuro.html, /background:#0b0a09/);
+});
+

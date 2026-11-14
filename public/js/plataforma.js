@@ -50,7 +50,7 @@
       const bk = s.lastBackup ? `${fmtDate(s.lastBackup.at)}${s.lastBackup.uploaded ? " · ✅ también fuera del servidor" : " · solo en el servidor"}` : "todavía ninguna";
       return `<article class="biz" style="--biz:${esc(n.accent)}">
         <div class="biz__head">
-          <img src="${esc(n.logo)}" alt="" />
+          <img src="${esc(n.logo)}" alt="" style="background:${esc(n.logoBg)}" />
           <div><p class="biz__name">${esc(n.name)}</p>
             <a class="biz__url" href="${esc(n.url || "#")}" target="_blank" rel="noopener">${esc(n.url || "(sin dirección pública)")}</a></div>
         </div>

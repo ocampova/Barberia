@@ -67,8 +67,8 @@
 .cal__day small { font-size: 9.5px; line-height: 1.1; color: var(--muted); white-space: nowrap; }
 .cal__day.is-open { background: rgba(111, 207, 143, .09); border-color: rgba(111, 207, 143, .25); }
 .cal__day.is-open small { color: var(--ok); }
-.cal__day.is-closed b { color: #6d655c; }
-.cal__day.is-closed small { color: #6d655c; }
+.cal__day.is-closed b { color: var(--muted-2); }
+.cal__day.is-closed small { color: var(--muted-2); }
 .cal__day.is-special::after { content: ""; position: absolute; top: 4px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: var(--gold-2); }
 .cal__day.is-today b { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--gold); }
 .cal__day.is-sel { background: var(--gold); border-color: var(--gold); }
@@ -85,7 +85,7 @@
 .week-card { margin: 14px 14px 110px; padding: 14px 16px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); }
 .week-row { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 14px; }
 .week-row span:last-child { text-align: right; }
-.week-row .muted { color: #6d655c; }
+.week-row .muted { color: var(--muted-2); }
 
 .selbar small .link { font-size: 12px; padding: 0; }
 
@@ -160,7 +160,7 @@
 
 /* Historial del cliente y cancelación */
 .bk__hist { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
-.bk__hist--warn { padding: 8px 10px; border-radius: 10px; color: #f3c27a; background: rgba(243, 160, 60, .1); border: 1px solid rgba(243, 160, 60, .3); }
+.bk__hist--warn { padding: 8px 10px; border-radius: 10px; color: var(--warn); background: rgba(243, 160, 60, .1); border: 1px solid rgba(243, 160, 60, .3); }
 .bk__by { font-weight: 400; opacity: .8; }
 .cancel-who { margin: 0 0 8px; padding: 12px 14px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
 .cancel-who strong { display: block; font-size: 17px; }

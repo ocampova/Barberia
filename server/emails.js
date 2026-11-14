@@ -11,6 +11,12 @@ function longDate(day) {
 }
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 // Mezcla un color con el fondo oscuro (para fondos suaves compatibles con todos los correos).
+// Colores del correo: los de la paleta del negocio (fondo claro u oscuro).
+function mailColors(config) {
+  const p = config.theme?.palette || {};
+  return { bg: p.bg || "#0b0a09", card: p.surface || "#151311", line: p.line || "#2b2622", text: p.text || "#f3eee6", muted: p.muted || "#a39a8e" };
+}
+const rgbOf = (hex) => { const m = /^#?([0-9a-f]{6})$/i.exec(hex || ""); if (!m) return [11, 10, 9]; const n = parseInt(m[1], 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
 function mix(hex, alpha, bg = [11, 10, 9]) {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex || "");
   if (!m) return "#2a2312";
@@ -108,11 +114,11 @@ function render(kind, b, config, { link = null, siteUrl = null, byClient = false
   const origin = siteUrl || (link ? new URL(link).origin : null);
   const logoUrl = origin && config.logos?.email ? `${origin}/${config.logos.email}` : null;
   const gold = config.theme?.accent || "#c9a227", ink = config.theme?.ink || "#1a1405";
-  const bg = "#0b0a09", card = "#151311", line = "#2b2622", text = "#f3eee6", muted = "#a39a8e";
+  const { bg, card, line, text, muted } = mailColors(config);
 
   const html = `<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-<meta name="color-scheme" content="dark light"><title>${esc(k.subject(ctx, config))}</title></head>
+<meta name="color-scheme" content="${config.theme?.palette?.scheme === "light" ? "light" : "dark light"}"><title>${esc(k.subject(ctx, config))}</title></head>
 <body style="margin:0;padding:0;background:${bg};">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${bg};">
 <tr><td align="center" style="padding:28px 14px;">
@@ -125,7 +131,7 @@ function render(kind, b, config, { link = null, siteUrl = null, byClient = false
   </td></tr>
   <tr><td style="background:${card};border:1px solid ${gold};border-radius:18px;padding:30px 24px;">
     <div style="text-align:center;">
-      <span style="display:inline-block;padding:5px 12px;border-radius:999px;background:${mix(gold, 0.18)};color:${gold};font-size:12px;letter-spacing:1px;text-transform:uppercase;">${esc(k.badge)}</span>
+      <span style="display:inline-block;padding:5px 12px;border-radius:999px;background:${mix(gold, 0.18, rgbOf(bg))};color:${gold};font-size:12px;letter-spacing:1px;text-transform:uppercase;">${esc(k.badge)}</span>
       <h1 style="margin:18px 0 8px;font-size:24px;color:${text};">${esc(k.title(ctx))}</h1>
       <p style="margin:0 0 22px;font-size:15px;line-height:1.5;color:${muted};">${esc(k.lead(ctx))}</p>
       <div style="font:bold 40px Helvetica,Arial,sans-serif;color:${text};">${esc(fmtTime(b.start))}</div>
@@ -191,16 +197,17 @@ function ics(b, config, svcNames, brand = config.name, place = "el negocio") {
 
 // Correo para restablecer la contraseña.
 function renderReset(user, config, link) {
-  const gold = config.theme?.accent || "#c9a227", ink = config.theme?.ink || "#1a1405", text = "#f3eee6", muted = "#a39a8e";
+  const gold = config.theme?.accent || "#c9a227", ink = config.theme?.ink || "#1a1405";
+  const { bg, card, text, muted } = mailColors(config);
   const first = esc(user.name.split(" ")[0]);
   // Logo del negocio (PNG publicado por la app; los correos no muestran SVG).
   const logoUrl = config.logos?.email ? `${new URL(link).origin}/${config.logos.email}` : null;
   const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
-<body style="margin:0;background:#0b0a09;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0b0a09;"><tr><td align="center" style="padding:28px 14px;">
+<body style="margin:0;background:${bg};">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${bg};"><tr><td align="center" style="padding:28px 14px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;font-family:Helvetica,Arial,sans-serif;color:${text};">
 ${logoUrl ? `<tr><td align="center" style="padding:6px 0 22px;"><img src="${esc(logoUrl)}" width="140" height="140" alt="${esc(config.name)}" style="display:block;width:140px;height:auto;border:0;"></td></tr>` : ""}
-<tr><td style="background:#151311;border:1px solid ${gold};border-radius:18px;padding:30px 24px;text-align:center;">
+<tr><td style="background:${card};border:1px solid ${gold};border-radius:18px;padding:30px 24px;text-align:center;">
   <h1 style="margin:0 0 10px;font-size:22px;">Hola ${first}</h1>
   <p style="margin:0 0 22px;font-size:15px;line-height:1.5;color:${muted};">Recibimos una solicitud para cambiar la contraseña de tu cuenta en ${esc(config.name)}. El enlace vence en 1 hora.</p>
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="border-radius:999px;background:${gold};">

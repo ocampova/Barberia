@@ -11,7 +11,7 @@
 .biz { padding: 16px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line);
   border-top: 3px solid var(--biz, var(--gold)); }
 .biz__head { display: flex; align-items: center; gap: 14px; }
-.biz__head img { width: 56px; height: 56px; object-fit: contain; flex: none; }
+.biz__head img { width: 56px; height: 56px; object-fit: contain; flex: none; border-radius: 12px; padding: 4px; }
 .biz__name { margin: 0; font: 600 19px var(--display); text-transform: uppercase; letter-spacing: .04em; }
 .biz__url { color: var(--muted); font-size: 13px; word-break: break-all; }
 .biz__stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0; }

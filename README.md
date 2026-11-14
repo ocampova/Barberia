@@ -39,14 +39,14 @@ Un solo servidor atiende a **varios negocios independientes**, cada uno en su di
 | Seimar Salón | `seimar.elcorte.app` | Seidy Matamoros |
 
 - **Cada negocio tiene su propia base de datos:** clientes, citas, servicios, horario, ajustes y equipo. Los clientes de un negocio no existen en otro, aunque usen el mismo correo, y la sesión de uno no abre el otro.
-- **Marca por negocio:** nombre, logo, colores (`theme`), frase de portada (`hero`), lema, ubicación, teléfono, políticas, ícono de la app, manifest, correos y aviso de privacidad. El diseño de las pantallas es el mismo para todos.
+- **Marca por negocio:** nombre, logo, colores (`theme`; con `theme.palette` el negocio puede tener fondo claro, como Seimar), frase de portada (`hero`), lema, ubicación, teléfono, políticas, ícono de la app, manifest, correos y aviso de privacidad. El diseño de las pantallas es el mismo para todos.
 - **Negocios relacionados:** la tarjeta "En el mismo local" (`related`) enlaza a la app del otro negocio.
 - **El equipo de cada negocio** (por ejemplo Víctor o Seidy) se maneja desde la plataforma o desde **Ajustes → Equipo** del panel. Cada quien solo entra al panel de su negocio.
 - Dentro de un negocio sigue habiendo **agendas** (`categories`): un negocio con varias sillas o profesionales puede tener varias, cada una con su horario y su cupo.
 
 **Agregar un negocio nuevo:**
 1. Copia `server/negocios/seimar.js` como `server/negocios/<slug>.js` y cambia la marca, los servicios y la agenda.
-2. Pon su logo en `public/img/negocios/<slug>/logo.svg` y genera los íconos con `node brand/export.js`.
+2. Pon su logo en `public/img/negocios/<slug>/logo.svg` y genera los íconos con `node brand/export.js`. Si el negocio usa fondo claro, el logo debe ser oscuro: los íconos y el logo de los correos salen con el fondo de su paleta.
 3. Agrégalo a la lista en `server/negocios/index.js`.
 4. En Railway, ve a **Settings → Networking → Custom Domain** y escribe `<slug>.elcorte.app`, con su CNAME en Cloudflare.
 
