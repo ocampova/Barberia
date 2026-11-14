@@ -189,3 +189,70 @@ test("copias de seguridad de cada negocio desde la plataforma", async (t) => {
   const log = (await me(P, "GET", "/api/plataforma/registro")).body.entries;
   assert.ok(log.some((l) => l.action === "descarga" && l.negocio === "seimar"));
 });
+
+test("datos de contacto de cada negocio: se editan en la plataforma y se aplican al instante", async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ct-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const mails = [];
+  const start = async () => {
+    const p = createPlatform({ negocios, dataDir: dir, env: ENV, clock, log: quiet,
+      mailer: { enabled: true, send: async (m) => { mails.push(m); return {}; } } });
+    const server = http.createServer(p.handler);
+    await new Promise((ok) => server.listen(0, ok));
+    const port = server.address().port;
+    const jar = {};
+    const call = (host, method, url, body) => new Promise((ok) => {
+      const data = body ? JSON.stringify(body) : null;
+      const r = http.request({ host: "127.0.0.1", port, method, path: url, headers: { host, "content-type": "application/json",
+        ...(jar[host] ? { cookie: jar[host] } : {}), ...(data ? { "content-length": Buffer.byteLength(data) } : {}) } }, (res) => {
+        let b = ""; res.on("data", (c) => (b += c));
+        res.on("end", () => { const sc = res.headers["set-cookie"]; if (sc) jar[host] = sc[0].split(";")[0];
+          let j = null; try { j = JSON.parse(b); } catch {} ok({ status: res.statusCode, body: j, text: b }); });
+      });
+      if (data) r.write(data); r.end();
+    });
+    return { call, stop: () => { server.close(); p.close(); } };
+  };
+
+  let srv = await start();
+  t.after(() => srv.stop());
+  const { call } = srv;
+  assert.equal((await call(P, "PUT", "/api/plataforma/negocios/seimar/contacto", { phone: "88887777" })).status, 401);
+  await call(P, "POST", "/api/plataforma/login", { email: "allan@example.com", password: "clave-del-dueno" });
+  // Al inicio Seimar tiene el número provisional (el mismo de la barbería)
+  const list0 = (await call(P, "GET", "/api/plataforma/negocios")).body.negocios;
+  assert.equal(list0.find((n) => n.slug === "seimar").contact.phone, list0.find((n) => n.slug === "victoraguilar").contact.phone);
+
+  // Validaciones
+  for (const bad of [{ phone: "123" }, { phone: "88887777", whatsapp: "12" }, { phone: "88887777", replyTo: "no-es-correo" }])
+    assert.equal((await call(P, "PUT", "/api/plataforma/negocios/seimar/contacto", bad)).status, 400, JSON.stringify(bad));
+  assert.equal((await call(P, "PUT", "/api/plataforma/negocios/nadie/contacto", { phone: "88887777" })).status, 404);
+
+  const ok = await call(P, "PUT", "/api/plataforma/negocios/seimar/contacto", { phone: "8888 7777", whatsapp: "", replyTo: " Seidy@Example.com " });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(ok.body.contact, { phone: "88887777", whatsapp: "50688887777", replyTo: "seidy@example.com" });
+
+  // La app, las páginas y los correos de Seimar lo usan de inmediato; la barbería no cambia
+  const cfg = (await call(S, "GET", "/api/config")).body;
+  assert.deepEqual([cfg.phone, cfg.whatsapp], ["88887777", "50688887777"]);
+  assert.ok(!("replyTo" in cfg), "el correo de respuesta no se publica en la app");
+  assert.match((await call(S, "GET", "/privacidad.html")).text, /wa\.me\/50688887777">8888 7777</);
+  assert.notEqual((await call(V, "GET", "/api/config")).body.phone, "88887777");
+  await call(S, "POST", "/api/auth/register", { name: "Rosa Vargas", phone: "86001122", email: "rosa@example.com", password: "secreto123", acceptPrivacy: true });
+  await call(S, "POST", "/api/bookings", { services: ["color"], day: "2026-11-10", start: 600 });
+  await new Promise((r) => setTimeout(r, 20));
+  const m = mails.at(-1);
+  assert.equal(m.replyTo, "seidy@example.com");
+  assert.match(m.html, /wa\.me\/50688887777/);
+  assert.match(m.html, /8888 7777/);
+
+  // Queda en el registro
+  const log = (await call(P, "GET", "/api/plataforma/registro")).body.entries;
+  assert.ok(log.some((l) => l.action === "contacto" && l.negocio === "seimar" && /correo para respuestas: seidy@example.com/.test(l.detail)));
+
+  // Sobrevive a un reinicio del servidor
+  srv.stop();
+  srv = await start();
+  assert.equal((await srv.call(S, "GET", "/api/config")).body.phone, "88887777");
+});
+

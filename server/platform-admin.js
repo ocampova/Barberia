@@ -213,7 +213,7 @@ function createPlatformAdmin({ tenants, pdb, env = process.env, log = console, c
   route("GET", "/api/plataforma/negocios", () => ({
     negocios: tenants.map((t) => ({
       slug: t.slug, name: t.config.name, place: t.config.place, url: t.url, logo: t.config.logos.main,
-      accent: t.config.theme.accent, staff: t.config.categories.map((c) => c.staff).filter(Boolean),
+      accent: t.config.theme.accent, contact: t.app.contact(), staff: t.config.categories.map((c) => c.staff).filter(Boolean),
       stats: stats(t),
     })),
   }));
@@ -253,6 +253,16 @@ function createPlatformAdmin({ tenants, pdb, env = process.env, log = console, c
     t.repo.settingSet("lastBackup", { at: new Date().toISOString(), name: r.name, uploaded: r.uploaded });
     pdb.log(admin.id, t.slug, "copia", r.name);
     return { status: 201, body: r };
+  });
+
+  // Datos de contacto del negocio: teléfono, WhatsApp y correo para las respuestas de los clientes.
+  route("PUT", "/api/plataforma/negocios/:slug/contacto", ({ params, body, admin }) => {
+    const t = tenantOf(params.slug);
+    const before = t.app.contact();
+    const after = t.app.setContact(body);
+    const changes = Object.keys(after).filter((k) => before[k] !== after[k]);
+    if (changes.length) pdb.log(admin.id, t.slug, "contacto", changes.map((k) => `${{ phone: "teléfono", whatsapp: "WhatsApp", replyTo: "correo para respuestas" }[k]}: ${after[k] || "(vacío)"}`).join(" · "));
+    return { contact: after };
   });
 
   // Descarga una copia recién hecha de la base de datos de un negocio (SQLite comprimida con gzip).
@@ -325,7 +335,8 @@ function createPlatformAdmin({ tenants, pdb, env = process.env, log = console, c
       if (out && out.status && out.body) return sendJson(res, out.status, out.body);
       sendJson(res, 200, out);
     } catch (e) {
-      if (e instanceof HttpError) return sendJson(res, e.status, { error: e.message });
+      // También los errores de validación de la app del negocio (otra clase, mismo formato)
+      if (e instanceof HttpError || (Number.isInteger(e.status) && e.status >= 400 && e.status < 500)) return sendJson(res, e.status, { error: e.message });
       log.error(e);
       sendJson(res, 500, { error: "Algo salió mal. Intenta de nuevo." });
     }

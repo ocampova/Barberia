@@ -35,6 +35,8 @@ function limiter(max, windowMs) {
 }
 
 function createApp({ repo, config, env = process.env, clock = () => new Date(), notify, mailer, backups = null, related = [], platformAuth = null }) {
+  // Copia propia: los datos de contacto se pueden cambiar desde la plataforma sin tocar el archivo del negocio.
+  config = { ...config, replyTo: config.replyTo || env.EMAIL_REPLY_TO || "" };
   /* ---------- Servicios ---------- */
   // La primera vez se copian de config.services. Después se administran desde el panel.
   if (!repo.serviceCount()) {
@@ -68,7 +70,7 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     let msg;
     try { msg = renderEmail(kind, b, configForEmail(), { link, siteUrl: site, ...extra }); }
     catch (e) { console.error("Plantilla de correo:", e.message); return false; }
-    Promise.resolve(mail.send({ to: b.email, ...msg }))
+    Promise.resolve(mail.send({ to: b.email, replyTo: config.replyTo, ...msg }))
       .catch((e) => console.error(`No se pudo enviar el correo (${kind}) a la cita ${b.id}:`, e.message));
     return mail.enabled !== false;
   }
@@ -441,7 +443,7 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
       repo.resetPurgeUser(u.id);
       repo.resetInsert(tokenHash(token), u.id, Date.now() + 3600e3);
       const msg = renderReset(u, config, `${site}/?reset=${token}`);
-      Promise.resolve(mail.send({ to: u.email, ...msg }))
+      Promise.resolve(mail.send({ to: u.email, replyTo: config.replyTo, ...msg }))
         .catch((e) => console.error("No se pudo enviar el correo de contraseña:", e.message));
     }
     return { ok: true, emailEnabled: mail.enabled !== false };
@@ -769,6 +771,33 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     `<meta name="theme-color" content="#0b0a09" />`,
   ].filter(Boolean).join("\n  ");
   const pageCache = new Map();
+
+  /* ---------- Datos de contacto (editables desde la plataforma) ---------- */
+  const digits = (s) => String(s ?? "").replace(/\D/g, "");
+  function contact() { return { phone: config.phone || "", whatsapp: config.whatsapp || "", replyTo: config.replyTo || "" }; }
+  function applyContact(c) {
+    if (!c) return;
+    Object.assign(config, c);
+    brandTokens.whatsapp = config.whatsapp || "";
+    brandTokens.phoneFmt = String(config.phone || "").replace(/(\d{4})(\d{4})/, "$1 $2");
+    pageCache.clear(); // las páginas llevan el teléfono y el WhatsApp
+  }
+  // Valida, guarda en la base del negocio y aplica de inmediato. Devuelve los datos como quedaron.
+  function setContact(body = {}) {
+    const cc = String(config.countryCode || "506");
+    const phone = digits(body.phone);
+    if (!/^\d{8,15}$/.test(phone)) throw new HttpError(400, "El teléfono debe tener al menos 8 dígitos.");
+    let wa = digits(body.whatsapp) || phone;
+    if (wa.length === 8) wa = cc + wa;
+    if (!/^\d{10,15}$/.test(wa)) throw new HttpError(400, "El WhatsApp debe llevar el código de país (por ejemplo 506 y el número).");
+    const replyTo = String(body.replyTo || "").trim().toLowerCase();
+    if (replyTo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(replyTo)) throw new HttpError(400, "El correo para respuestas no es válido.");
+    const c = { phone, whatsapp: wa, replyTo };
+    repo.settingSet("contact", c);
+    applyContact(c);
+    return contact();
+  }
+
   function renderPage(file, st) {
     const hit = pageCache.get(file);
     if (hit && hit.mtime === st.mtimeMs) return hit;
@@ -867,6 +896,9 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
   }
 
   handler.runReminders = runReminders;
+  handler.contact = contact;
+  handler.setContact = setContact;
+  applyContact(repo.setting("contact", null));
   return handler;
 
   async function handler(req, res) {

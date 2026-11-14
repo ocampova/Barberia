@@ -9,7 +9,8 @@ function createMailer(env = process.env, fetchImpl = globalThis.fetch) {
   const replyTo = env.EMAIL_REPLY_TO;
   const enabled = Boolean(key && from);
 
-  async function send({ to, subject, html, text, attachments }) {
+  // replyTo por correo (el del negocio) tiene prioridad sobre EMAIL_REPLY_TO.
+  async function send({ to, subject, html, text, attachments, replyTo: perMail }) {
     if (!enabled) {
       console.log(`[correo desactivado] para ${to}: ${subject}`);
       return { skipped: true };
@@ -19,7 +20,7 @@ function createMailer(env = process.env, fetchImpl = globalThis.fetch) {
       headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
       body: JSON.stringify({
         from, to: [to], subject, html, text,
-        ...(replyTo ? { reply_to: replyTo } : {}),
+        ...((perMail || replyTo) ? { reply_to: perMail || replyTo } : {}),
         ...(attachments ? { attachments } : {}),
       }),
     });

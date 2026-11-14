@@ -5,7 +5,7 @@
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const fmtDate = (iso) => iso ? new Date(iso).toLocaleString("es-CR", { dateStyle: "medium", timeStyle: "short" }) : "—";
   const ACTIONS = { entrar: "entró al panel", login: "inició sesión", "login-fallido": "intento fallido de inicio de sesión",
-    "equipo-agregar": "dio acceso a", "equipo-quitar": "quitó el acceso a", copia: "hizo una copia", descarga: "descargó una copia", password: "cambió su contraseña" };
+    "equipo-agregar": "dio acceso a", "equipo-quitar": "quitó el acceso a", copia: "hizo una copia", contacto: "cambió los datos de contacto",  descarga: "descargó una copia", password: "cambió su contraseña" };
 
   async function api(path, opts = {}) {
     const res = await fetch(path, { ...opts, credentials: "same-origin",
@@ -33,6 +33,9 @@
   const srcLine = (title, rows) => `<p class="biz__meta"><strong>${title}:</strong> ${rows.length
     ? rows.map((r) => `<span class="nw">${esc(r.label)} <b>${r.count}</b></span>`).join(" · ") : "nadie todavía"}</p>`;
 
+  const fmtPhone = (p) => String(p || "").replace(/^(\d{4})(\d{4})$/, "$1 $2");
+  const fmtWa = (w) => { const m = /^(\d{3})(\d{4})(\d{4})$/.exec(w || ""); return m ? `+${m[1]} ${m[2]} ${m[3]}` : w ? "+" + w : "—"; };
+
   async function render() {
     const { negocios } = await api("/api/plataforma/negocios");
     const sum = (k) => negocios.reduce((t, n) => t + (n.stats[k] || 0), 0);
@@ -41,7 +44,9 @@
     ].map(([v, l]) => `<div><strong>${v}</strong><small>${l}</small></div>`).join("");
 
     $("#biz-list").innerHTML = negocios.map((n) => {
-      const s = n.stats;
+      const s = n.stats, c = n.contact;
+      // Aviso si dos negocios comparten número (por ejemplo, un dato provisional)
+      const twin = negocios.find((o) => o.slug !== n.slug && (o.contact.phone === c.phone || o.contact.whatsapp === c.whatsapp));
       const bk = s.lastBackup ? `${fmtDate(s.lastBackup.at)}${s.lastBackup.uploaded ? " · ✅ también fuera del servidor" : " · solo en el servidor"}` : "todavía ninguna";
       return `<article class="biz" style="--biz:${esc(n.accent)}">
         <div class="biz__head">
@@ -67,6 +72,18 @@
           <button class="btn btn--ghost" data-backup="${esc(n.slug)}">Copia ahora</button>
           <a class="btn btn--ghost" href="/api/plataforma/negocios/${esc(n.slug)}/copia/descargar" download>Descargar copia</a>
         </div>
+        <details class="biz__contact">
+          <summary>Datos de contacto${twin || !c.replyTo ? ` <span class="warn">⚠</span>` : ""}</summary>
+          <p class="biz__meta">Teléfono ${esc(fmtPhone(c.phone))} · WhatsApp ${esc(fmtWa(c.whatsapp))}<br>Respuestas a correos: ${esc(c.replyTo || "nadie (no se pueden responder)")}</p>
+          ${twin ? `<p class="adm-hint warn">⚠ Usa el mismo número que ${esc(twin.name)}.</p>` : ""}
+          <form class="contact-form" data-contact="${esc(n.slug)}" novalidate>
+            <label><span>Teléfono</span><input name="phone" inputmode="tel" value="${esc(fmtPhone(c.phone))}" /></label>
+            <label><span>WhatsApp (con código de país; vacío = el teléfono)</span><input name="whatsapp" inputmode="tel" value="${esc(c.whatsapp)}" /></label>
+            <label><span>Correo para respuestas de clientes</span><input name="replyTo" type="email" inputmode="email" value="${esc(c.replyTo)}" placeholder="correo@ejemplo.com" /></label>
+            <button class="btn btn--gold">Guardar contacto</button>
+          </form>
+          <p class="adm-hint" style="margin:6px 0 0">Se usan en la app, en los correos y en los botones de WhatsApp. El cambio se aplica al instante.</p>
+        </details>
         <details>
           <summary>Equipo del negocio (${s.team.length})</summary>
           ${s.team.length ? s.team.map((a) => `<div class="team-row"><div><strong>${esc(a.name)}</strong><small>${esc(a.email)}</small></div>
@@ -79,6 +96,15 @@
       </article>`;
     }).join("");
 
+    $$("form[data-contact]").forEach((f) => f.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = f.querySelector("button"); btn.disabled = true;
+      try {
+        await api(`/api/plataforma/negocios/${f.dataset.contact}/contacto`, { method: "PUT",
+          body: { phone: f.phone.value, whatsapp: f.whatsapp.value, replyTo: f.replyTo.value } });
+        toast("Datos de contacto guardados"); render(); renderLog();
+      } catch (err) { toast(err.message); } finally { btn.disabled = false; }
+    }));
     $$("form[data-add]").forEach((f) => f.addEventListener("submit", async (e) => {
       e.preventDefault();
       try { await api(`/api/plataforma/negocios/${f.dataset.add}/equipo`, { method: "POST", body: { login: f.login.value } }); toast("Acceso otorgado"); render(); renderLog(); }
