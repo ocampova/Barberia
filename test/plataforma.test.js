@@ -219,9 +219,10 @@ test("datos de contacto de cada negocio: se editan en la plataforma y se aplican
   const { call } = srv;
   assert.equal((await call(P, "PUT", "/api/plataforma/negocios/seimar/contacto", { phone: "88887777" })).status, 401);
   await call(P, "POST", "/api/plataforma/login", { email: "allan@example.com", password: "clave-del-dueno" });
-  // Al inicio Seimar tiene el número provisional (el mismo de la barbería)
+  // Al inicio, los datos del archivo de Seimar (los de su página de Facebook)
   const list0 = (await call(P, "GET", "/api/plataforma/negocios")).body.negocios;
-  assert.equal(list0.find((n) => n.slug === "seimar").contact.phone, list0.find((n) => n.slug === "victoraguilar").contact.phone);
+  assert.deepEqual(list0.find((n) => n.slug === "seimar").contact,
+    { phone: "24442141", whatsapp: "50624442141", replyTo: "seimarsaloncr@gmail.com", instagram: "", facebook: "seimarsalon" });
 
   // Validaciones
   for (const bad of [{ phone: "123" }, { phone: "88887777", whatsapp: "12" }, { phone: "88887777", replyTo: "no-es-correo" }])
@@ -230,7 +231,7 @@ test("datos de contacto de cada negocio: se editan en la plataforma y se aplican
 
   const ok = await call(P, "PUT", "/api/plataforma/negocios/seimar/contacto", { phone: "8888 7777", whatsapp: "", replyTo: " Seidy@Example.com " });
   assert.equal(ok.status, 200);
-  assert.deepEqual(ok.body.contact, { phone: "88887777", whatsapp: "50688887777", replyTo: "seidy@example.com", instagram: "", facebook: "" });
+  assert.deepEqual(ok.body.contact, { phone: "88887777", whatsapp: "50688887777", replyTo: "seidy@example.com", instagram: "", facebook: "seimarsalon" });
 
   // La app, las páginas y los correos de Seimar lo usan de inmediato; la barbería no cambia
   const cfg = (await call(S, "GET", "/api/config")).body;

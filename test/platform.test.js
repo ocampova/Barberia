@@ -91,7 +91,7 @@ test("las páginas llevan la marca de su negocio (sin rastros del otro)", async 
   const admin = (await call("seimar.elcorte.app", "GET", "/admin")).text;
   assert.match(admin, /<h1>Panel del salón<\/h1>/);
   const priv = (await call("seimar.elcorte.app", "GET", "/privacidad.html")).text;
-  assert.match(priv, /Seimar Salón, en San Roque de Grecia/);
+  assert.match(priv, /Seimar Salón, con domicilio en 150 m oeste de la plaza de deportes, San Roque de Grecia, Costa Rica/);
   assert.ok(!priv.includes("Víctor"));
   const man = (await call("seimar.elcorte.app", "GET", "/manifest.webmanifest")).body;
   assert.equal(man.name, "Seimar Salón");
@@ -200,7 +200,7 @@ test("correos: cada negocio envía con su nombre, y la dirección de respuesta g
     server.close(); p.close();
     assert.deepEqual(sent.map((m) => [m.from, m.reply_to]), [
       ["Víctor Aguilar Barbería <reservas@elcorte.app>", "victor@example.com"],
-      ["Seimar Salón <reservas@elcorte.app>", undefined],
+      ["Seimar Salón <reservas@elcorte.app>", "seimarsaloncr@gmail.com"], // la suya, nunca la de la barbería
     ]);
     assert.match(sent[1].html, /seimar\.elcorte\.app\/img\/negocios\/seimar\/email\.png/);
   } finally {

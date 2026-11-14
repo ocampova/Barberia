@@ -13,10 +13,13 @@ module.exports = {
   description: "Reserva color, cortes, uñas y tratamientos en Seimar Salón, San Roque de Grecia.",
 
   city: "San Roque de Grecia",
-  location: "San Roque de Grecia, Alajuela",
-  mapsUrl: "https://maps.google.com/?q=San+Roque+de+Grecia,+Alajuela",
-  phone: "83704499",          // por confirmar: teléfono / WhatsApp propio del salón
-  whatsapp: "50683704499",
+  location: "150 m oeste de la plaza de deportes, San Roque de Grecia",
+  mapsUrl: "https://maps.google.com/?q=Seimar+Salon,+San+Roque,+Grecia,+Costa+Rica",
+  // Datos de su página de Facebook. Son los valores iniciales: el salón los cambia en su panel (Ajustes → Datos de contacto).
+  phone: "24442141",
+  whatsapp: "50624442141",     // por confirmar: el fijo; cambiar si el WhatsApp es otro número
+  replyTo: "seimarsaloncr@gmail.com",
+  facebook: "seimarsalon",
 
   // Crema y rosa dorado, con fondo claro.
   theme: {
