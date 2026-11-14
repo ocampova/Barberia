@@ -60,6 +60,7 @@ Es la vista del dueño de la aplicación, para administrar todos los negocios:
   - acciones: **Copia ahora** y **Abrir app**.
 - **Entrar al panel:** abre el panel de ese negocio con un pase de un solo uso de 60 segundos. La entrada dura 8 horas, sirve solo para ese negocio y muestra el aviso "Modo plataforma".
 - **Equipo de cada negocio:** la persona crea su cuenta en la app del negocio, y después le das acceso con su correo o teléfono.
+- **¿Cómo los conocieron?:** lo que respondieron los clientes al registrarse, de los últimos 30 días y desde el inicio. Los negocios no lo ven.
 - **Registro de accesos:** inicios de sesión (también los fallidos), entradas a cada panel y cambios de equipo.
 
 **Dirección:** `plataforma.<dominio>`. Si tu plan de Railway ya no admite otro dominio propio, pon `PLATFORM_HOST` con la dirección que da Railway (por ejemplo `barberia-production-b09e4724.up.railway.app`) y la plataforma responde ahí. Puede ser una lista separada por comas.

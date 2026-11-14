@@ -61,14 +61,17 @@ test("plataforma: inicio de sesión y tablero de todos los negocios", async (t) 
   // Una clienta reserva en Seimar → aparece en el tablero
   const rosa = browser();
   await rosa(S, "POST", "/api/auth/register", { name: "Rosa Vargas", phone: "86001122", email: "rosa@example.com", password: "secreto123", acceptPrivacy: true });
+  await browser()(S, "POST", "/api/auth/register", { name: "Ana Mora", phone: "86001133", email: "ana@example.com", password: "secreto123", acceptPrivacy: true, source: "instagram" });
   const bk = await rosa(S, "POST", "/api/bookings", { services: ["color"], day: "2026-11-10", start: 600 });
   assert.equal(bk.status, 201, JSON.stringify(bk.body));
 
   const list = (await me(P, "GET", "/api/plataforma/negocios")).body.negocios;
   assert.deepEqual(list.map((n) => n.slug), ["victoraguilar", "seimar"]);
   const s = list.find((n) => n.slug === "seimar");
+  assert.deepEqual(s.stats.sources.d30, [{ label: "Instagram", count: 1 }, { label: "Sin respuesta", count: 1 }]);
+  assert.deepEqual(list.find((n) => n.slug === "victoraguilar").stats.sources.all, []);
   assert.equal(s.url, "https://seimar.elcorte.app");
-  assert.equal(s.stats.clients, 1, "clientes");
+  assert.equal(s.stats.clients, 2, "clientes");
   assert.equal(s.stats.pending, 1, "pendientes");
   assert.deepEqual(s.stats.team, []); // el dueño de la plataforma no es parte del equipo del negocio
   // La plataforma no se confunde con un negocio

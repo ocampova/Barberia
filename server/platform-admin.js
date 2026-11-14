@@ -140,6 +140,13 @@ function createPlatformAdmin({ tenants, pdb, env = process.env, log = console, c
   }
 
   /* ---------- Números de cada negocio (solo lectura) ---------- */
+  // "¿Cómo nos conociste?" de los clientes registrados desde `since`, de mayor a menor.
+  function sourcesOf(t, since) {
+    const labels = Object.fromEntries((t.config.sources || []).map((x) => [x.id, x.label]));
+    return t.repo.sources(since).map((r) => ({ label: labels[r.source] || "Sin respuesta", count: r.n }))
+      .sort((a, b) => b.count - a.count || (a.label === "Sin respuesta") - (b.label === "Sin respuesta"));
+  }
+
   function stats(t) {
     const today = nowIn(t.config.timeZone, clock()).day;
     const month = today.slice(0, 7);
@@ -158,6 +165,7 @@ function createPlatformAdmin({ tenants, pdb, env = process.env, log = console, c
       team: t.repo.admins().map((a) => ({ id: a.id, name: a.name, email: a.email })),
       lastBackup: t.repo.setting("lastBackup", null),
       dbBytes: file,
+      sources: { d30: sourcesOf(t, new Date(clock().getTime() - 30 * 86400e3).toISOString()), all: sourcesOf(t, "0000") },
     };
   }
 

@@ -450,14 +450,7 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     return { cancelHours: h };
   }, { admin: true });
 
-  // De dónde vienen los clientes (registros de los últimos N días; 0 = todos).
-  route("GET", "/api/admin/sources", ({ query }) => {
-    const days = Math.min(Math.max(Number(query.get("days") || 0), 0), 3650);
-    const since = days ? new Date(clock().getTime() - days * 86400e3).toISOString() : "0000";
-    const labels = Object.fromEntries((config.sources || []).map((x) => [x.id, x.label]));
-    const rows = repo.sources(since).map((r) => ({ source: r.source, label: labels[r.source] || "Sin respuesta", count: r.n }));
-    return { days, total: rows.reduce((t, r) => t + r.count, 0), sources: rows };
-  }, { admin: true });
+  // "¿Cómo nos conociste?": el resumen está en la plataforma (server/platform-admin.js), no en el panel.
 
   // Equipo: cuentas con acceso al panel.
   route("GET", "/api/admin/team", () => ({ admins: repo.admins() }), { admin: true });

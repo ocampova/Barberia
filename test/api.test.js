@@ -527,11 +527,9 @@ test("registro exige aceptar la privacidad y guarda de dónde viene el cliente",
   const d = browser();
   await d("POST", "/api/auth/register", { name: "Luis Solano", phone: "86001133", email: "luis@example.com", password: "secreto123", acceptPrivacy: true, source: "inventado" });
 
+  // El resumen está en la plataforma; el negocio no lo ve
   const adm = await admin();
-  const s = (await adm("GET", "/api/admin/sources")).body;
-  assert.equal(s.total, 2);
-  assert.deepEqual(s.sources.map((x) => [x.label, x.count]).sort(), [["Instagram", 1], ["Sin respuesta", 1]]);
-  assert.equal((await c("GET", "/api/admin/sources")).status, 403);
+  assert.equal((await adm("GET", "/api/admin/sources")).status, 404);
 });
 
 test("plazo de cancelación configurable desde el panel", async (t) => {

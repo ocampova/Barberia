@@ -30,6 +30,9 @@
     finally { btn.disabled = false; }
   });
 
+  const srcLine = (title, rows) => `<p class="biz__meta"><strong>${title}:</strong> ${rows.length
+    ? rows.map((r) => `<span class="nw">${esc(r.label)} <b>${r.count}</b></span>`).join(" · ") : "nadie todavía"}</p>`;
+
   async function render() {
     const { negocios } = await api("/api/plataforma/negocios");
     const sum = (k) => negocios.reduce((t, n) => t + (n.stats[k] || 0), 0);
@@ -56,6 +59,8 @@
         </div>
         <p class="biz__meta">Profesional: ${esc(n.staff.join(", ") || "—")} · Última reserva: ${esc(fmtDate(s.lastBooking))}</p>
         <p class="biz__meta">Última copia: ${esc(bk)}</p>
+        <div class="biz__src"><p>¿Cómo los conocieron? <small>· clientes registrados</small></p>
+          ${srcLine("Últimos 30 días", s.sources.d30)}${srcLine("Desde el inicio", s.sources.all)}</div>
         <div class="biz__actions">
           <button class="btn btn--gold" data-enter="${esc(n.slug)}">Entrar al panel</button>
           <a class="btn btn--ghost" href="${esc(n.url || "#")}" target="_blank" rel="noopener">Abrir app</a>

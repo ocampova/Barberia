@@ -20,6 +20,13 @@
 .biz__stats small { color: var(--muted); font-size: 11px; }
 .biz__stats .is-alert strong { color: var(--gold-2); }
 .biz__meta { color: var(--muted); font-size: 13px; margin: 0 0 6px; }
+.biz__src { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); }
+.biz__src > p { margin: 0 0 6px; font-weight: 500; font-size: 14px; }
+.biz__src small { color: var(--muted); font-weight: 400; }
+.biz__src .biz__meta { margin: 0 0 2px; }
+.biz__src .biz__meta strong { color: var(--text); font-weight: 500; }
+.biz__src .nw { white-space: nowrap; }
+.biz__src b { color: var(--gold-2); font-weight: 600; }
 .biz__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .biz__actions .btn { min-height: 40px; padding: 0 14px; font-size: 13px; }
 .biz details { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
