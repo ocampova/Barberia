@@ -85,7 +85,8 @@ Con un estilo parecido a los de Bewe, pero con la imagen negro y dorado de la ma
 |---|---|
 | Al reservar | "Recibimos tu solicitud": pendiente de confirmación |
 | El barbero confirma | "Tu cita está confirmada", con la invitación `.ics` para agregarla al calendario |
-| Unas 24 h antes | Recordatorio, una sola vez, a las citas confirmadas |
+| Las horas antes que se elijan en **Ajustes → Recordatorios** (24 h al inicio) | Recordatorio, una sola vez, a las citas confirmadas |
+| Unas horas antes (3 h al inicio) | Recordatorio extra, solo a los clientes con historial |
 | El barbero rechaza o cancela | Aviso, con un botón para reservar otro horario |
 | El cliente cancela | Confirmación de la cancelación |
 
@@ -100,6 +101,11 @@ Se entra con correo o teléfono y contraseña, con una cuenta de **administrador
 
 - **Pendientes:** las citas por confirmar, con un número rojo que avisa cuando entra una nueva. Se revisa cada 30 segundos.
 - **Agenda:** las citas por día. Desde aquí se marca a cada cliente como atendido, "no vino", cancelada, o se le manda un recordatorio por WhatsApp.
+- **Cancelar una cita:** el panel pregunta quién canceló.
+  - **El cliente avisó** (por WhatsApp, llamada…): cuenta para el historial del cliente, y el correo le dice "cancelamos tu cita como nos pediste".
+  - **Cancelamos nosotros:** no cuenta para el historial del cliente.
+- **Historial del cliente:** cada cita muestra cuántas veces canceló ese teléfono y cuántas no vino, en los últimos 6 meses.
+  - Si no vino una vez, canceló 2 veces con menos de 24 horas o canceló 3 veces, sale un aviso ⚠ "Cliente con historial".
 - **+ Cita:** para agendar a quien llama o llega al local. Esa cita queda confirmada de una vez.
 - **Servicios:** crear, editar, ordenar, ocultar o borrar servicios: nombre, categoría, **duración**, precio (en blanco = "Consultar"), descripción y "Destacado" (aparece en la portada).
   - Cada cita guarda la duración y el precio que tenía al reservarse, así que los cambios no afectan las citas existentes.

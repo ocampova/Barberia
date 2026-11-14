@@ -91,6 +91,11 @@ function openDb(file) {
   if (!cols.includes("email")) db.exec("ALTER TABLE bookings ADD COLUMN email TEXT NOT NULL DEFAULT ''");
   if (!cols.includes("reminded_at")) db.exec("ALTER TABLE bookings ADD COLUMN reminded_at TEXT");
   if (!cols.includes("user_id")) db.exec("ALTER TABLE bookings ADD COLUMN user_id INTEGER");
+  // Quién canceló ('cliente' o 'negocio') y con cuántos minutos de anticipación.
+  if (!cols.includes("cancelled_by")) db.exec("ALTER TABLE bookings ADD COLUMN cancelled_by TEXT NOT NULL DEFAULT ''");
+  if (!cols.includes("cancel_notice_min")) db.exec("ALTER TABLE bookings ADD COLUMN cancel_notice_min INTEGER");
+  // Segundo recordatorio (clientes con historial de cancelaciones o ausencias).
+  if (!cols.includes("reminded2_at")) db.exec("ALTER TABLE bookings ADD COLUMN reminded2_at TEXT");
   const ucols = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
   if (!ucols.includes("role")) db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'cliente'");
   if (!ucols.includes("source")) db.exec("ALTER TABLE users ADD COLUMN source TEXT NOT NULL DEFAULT ''");
@@ -161,7 +166,18 @@ function repo(db) {
     reminderCandidates: db.prepare(`SELECT * FROM bookings WHERE status = 'confirmada' AND email <> ''
       AND reminded_at IS NULL AND day BETWEEN ? AND ?`),
     setReminded: db.prepare("UPDATE bookings SET reminded_at = ? WHERE id = ?"),
-    setStatus: db.prepare("UPDATE bookings SET status = ?, updated_at = ? WHERE id = ?"),
+    setStatus: db.prepare("UPDATE bookings SET status = ?, cancelled_by = '', cancel_notice_min = NULL, updated_at = ? WHERE id = ?"),
+    setCancelled: db.prepare("UPDATE bookings SET status = 'cancelada', cancelled_by = ?, cancel_notice_min = ?, updated_at = ? WHERE id = ?"),
+    // Historial de un cliente (por teléfono) desde una fecha: cancelaciones suyas, a última hora (< 24 h) y ausencias.
+    history: db.prepare(`SELECT
+        COALESCE(SUM(status = 'cancelada' AND cancelled_by = 'cliente'), 0) AS cancels,
+        COALESCE(SUM(status = 'cancelada' AND cancelled_by = 'cliente' AND cancel_notice_min < 1440), 0) AS late,
+        COALESCE(SUM(status = 'no-asistio'), 0) AS noShows,
+        COALESCE(SUM(status = 'completada'), 0) AS completed
+      FROM bookings WHERE phone = ? AND day >= ?`),
+    reminder2Candidates: db.prepare(`SELECT * FROM bookings WHERE status = 'confirmada' AND email <> ''
+      AND reminded2_at IS NULL AND day BETWEEN ? AND ?`),
+    setReminded2: db.prepare("UPDATE bookings SET reminded2_at = ? WHERE id = ?"),
     blocksOn: db.prepare("SELECT * FROM blocks WHERE day = ?"),
     blocksRange: db.prepare("SELECT * FROM blocks WHERE day BETWEEN ? AND ? ORDER BY day, start"),
     insertBlock: db.prepare("INSERT INTO blocks (category, day, start, end, reason) VALUES (?, ?, ?, ?, ?)"),
@@ -222,6 +238,10 @@ function repo(db) {
     reminderCandidates: (from, to) => q.reminderCandidates.all(from, to).map(rowToBooking),
     setReminded: (id) => q.setReminded.run(new Date().toISOString(), id).changes,
     setStatus: (id, status) => q.setStatus.run(status, new Date().toISOString(), id).changes,
+    setCancelled: (id, by, noticeMin) => q.setCancelled.run(by, noticeMin, new Date().toISOString(), id).changes,
+    history: (phone, since) => ({ ...q.history.get(phone, since) }),
+    reminder2Candidates: (from, to) => q.reminder2Candidates.all(from, to).map(rowToBooking),
+    setReminded2: (id) => q.setReminded2.run(new Date().toISOString(), id).changes,
     blocksOn: (day) => q.blocksOn.all(day),
     blocksRange: (from, to) => q.blocksRange.all(from, to),
     insertBlock: (b) => Number(q.insertBlock.run(b.category, b.day, b.start, b.end, b.reason).lastInsertRowid),

@@ -209,6 +209,25 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
 
   /* ---------- Ajustes del negocio ---------- */
   const cancelHours = () => repo.setting("cancelHours", config.cancelHours ?? 0);
+  // Recordatorio por correo: horas antes de la cita (0 = no se envía).
+  const reminderHours = () => repo.setting("reminderHours", config.reminderHoursBefore ?? 24);
+  // Segundo recordatorio, solo para clientes con historial (0 = no se envía).
+  const reminderExtraHours = () => repo.setting("reminderExtraHours", config.reminderExtraHours ?? 3);
+
+  /* ---------- Historial de cancelaciones y ausencias ---------- */
+  const HISTORY_DAYS = 180;
+  // Un cliente "con historial": no vino al menos una vez, canceló 2 veces a última hora (< 24 h) o canceló 3 veces.
+  function clientHistory(phone) {
+    if (!phone) return null;
+    const h = repo.history(phone, addDays(now().day, -HISTORY_DAYS));
+    return { ...h, flagged: h.noShows >= 1 || h.late >= 2 || h.cancels >= 3 };
+  }
+  // Minutos que faltan para la cita (0 si ya empezó).
+  function minutesUntil(b) {
+    const n = now();
+    const m = (Date.parse(b.day + "T00:00:00Z") - Date.parse(n.day + "T00:00:00Z")) / 60000 + b.start - n.minutes;
+    return Math.max(0, Math.round(m));
+  }
   const sourceIds = new Set((config.sources || []).map((x) => x.id));
 
   /* ---------- Primer administrador ---------- */
@@ -332,7 +351,7 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     const minutesLeft = (Date.parse(b.day + "T00:00:00Z") - Date.parse(n.day + "T00:00:00Z")) / 60000 + b.start - n.minutes;
     if (hours > 0 && minutesLeft < hours * 60)
       throw new HttpError(409, `Las citas se pueden cancelar desde la app hasta ${hours} ${hours === 1 ? "hora" : "horas"} antes. Escríbenos por WhatsApp.`);
-    repo.setStatus(b.id, "cancelada");
+    repo.setCancelled(b.id, "cliente", minutesUntil(b));
     emailClient("cancelada", b, req, { byClient: true });
     send(`Cita cancelada: ${b.name}`, `${b.day} · ${fmtTime(b.start)} quedó libre.`);
     return publicBooking({ ...b, status: "cancelada" });
@@ -439,15 +458,24 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
   });
 
   /* ---------- Panel ---------- */
-  route("GET", "/api/admin/settings", () => ({ cancelHours: cancelHours() }), { admin: true });
+  route("GET", "/api/admin/settings", () => ({ cancelHours: cancelHours(), reminderHours: reminderHours(),
+    reminderExtraHours: reminderExtraHours(), emailEnabled: mail.enabled !== false }), { admin: true });
 
   // Las copias de seguridad se manejan desde la plataforma (server/platform-admin.js).
 
   route("PUT", "/api/admin/settings", ({ body }) => {
-    const h = Number(body.cancelHours);
-    if (!Number.isInteger(h) || h < 0 || h > 72) throw new HttpError(400, "El plazo debe ser entre 0 y 72 horas.");
-    repo.settingSet("cancelHours", h);
-    return { cancelHours: h };
+    const out = {};
+    const take = (key, max, msg) => {
+      if (body[key] === undefined) return;
+      const h = Number(body[key]);
+      if (!Number.isInteger(h) || h < 0 || h > max) throw new HttpError(400, msg);
+      repo.settingSet(key, h); out[key] = h;
+    };
+    take("cancelHours", 72, "El plazo debe ser entre 0 y 72 horas.");
+    take("reminderHours", 72, "El recordatorio debe ser entre 0 y 72 horas antes.");
+    take("reminderExtraHours", 24, "El segundo recordatorio debe ser entre 0 y 24 horas antes.");
+    if (!Object.keys(out).length) throw new HttpError(400, "Nada que cambiar.");
+    return out;
   }, { admin: true });
 
   // "¿Cómo nos conociste?": el resumen está en la plataforma (server/platform-admin.js), no en el panel.
@@ -491,6 +519,7 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
   route("GET", "/api/admin/summary", () => ({
     pending: repo.pendingCount(now().day), pendingBy: repo.pendingByCategory(now().day),
     today: now().day, emailEnabled: mail.enabled !== false,
+    reminderExtraHours: mail.enabled !== false ? reminderExtraHours() : 0,
   }), { admin: true });
 
   route("GET", "/api/admin/bookings", ({ query }) => {
@@ -499,7 +528,9 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     if (!isDay(from) || !isDay(to)) throw new HttpError(400, "Fecha inválida.");
     const status = query.get("status");
     const list = repo.bookingsRange(from, to).filter((b) => !status || b.status === status);
-    return { bookings: list.map(({ token, ...b }) => b), blocks: repo.blocksRange(from, to) };
+    const hist = new Map();
+    const historyOf = (phone) => { if (!hist.has(phone)) hist.set(phone, clientHistory(phone)); return hist.get(phone); };
+    return { bookings: list.map(({ token, ...b }) => ({ ...b, history: historyOf(b.phone) })), blocks: repo.blocksRange(from, to) };
   }, { admin: true });
 
   route("PATCH", "/api/admin/bookings/:id", ({ params, body, req }) => {
@@ -513,12 +544,14 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
         ranges: rangesFor(b.category, b.day), bookings: others, blocks: repo.blocksOn(b.day), now: null });
       if (!free.includes(b.start)) throw new HttpError(409, "Ese espacio ya está ocupado.");
     }
-    repo.setStatus(b.id, body.status);
+    // Al cancelar, el panel indica quién canceló: el cliente (avisó por WhatsApp, llamada…) o el negocio.
+    const by = body.status === "cancelada" ? (body.by === "cliente" ? "cliente" : "negocio") : "";
+    if (by) repo.setCancelled(b.id, by, minutesUntil(b)); else repo.setStatus(b.id, body.status);
     const changed = b.status !== body.status;
     const emailed = changed && ["confirmada", "rechazada", "cancelada"].includes(body.status)
-      ? emailClient(body.status, b, req) : false;
+      ? emailClient(body.status, b, req, by === "cliente" ? { byRequest: true } : {}) : false;
     const { token, ...rest } = b;
-    return { ...rest, status: body.status, emailed };
+    return { ...rest, status: body.status, cancelled_by: by, emailed, history: clientHistory(b.phone) };
   }, { admin: true });
 
   // Cita creada por el barbero (llamada, cliente en el local).
@@ -797,22 +830,38 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
   }
 
   /* ---------- Recordatorios por correo ---------- */
-  // Se llama periódicamente desde index.js. Envía un recordatorio a las citas confirmadas
-  // que empiezan dentro de las próximas `reminderHoursBefore` horas (y en más de 1 hora).
+  // Se llama periódicamente desde index.js. Envía:
+  //  1. un recordatorio a las citas confirmadas que empiezan dentro de las próximas `reminderHours` horas;
+  //  2. un segundo recordatorio, `reminderExtraHours` antes, a los clientes con historial de cancelaciones o ausencias.
   function runReminders() {
     if (mail.enabled === false) return 0;
     const n = now();
-    const abs = (day, min) => Date.parse(day + "T00:00:00Z") / 60000 + min;
-    const nowAbs = abs(n.day, n.minutes);
-    const horizon = (config.reminderHoursBefore || 24) * 60;
+    const first = reminderHours() * 60, extra = reminderExtraHours() * 60;
+    const until = (b) => minutesUntil(b) || -1;
+    const recent = (iso, hours) => { const d = clock().getTime() - Date.parse(iso); return Boolean(iso) && d >= 0 && d < hours * 3600e3; };
+    const to = addDays(n.day, Math.ceil(Math.max(first, extra) / 1440) + 1);
     let sent = 0;
-    for (const b of repo.reminderCandidates(n.day, addDays(n.day, 2))) {
-      const until = abs(b.day, b.start) - nowAbs;
-      if (until <= 60 || until > horizon) continue;
-      // Si se confirmó hace muy poco, el correo de confirmación ya sirve de recordatorio.
-      if (Date.now() - Date.parse(b.updated_at) < 3 * 3600e3 && until < 12 * 60) { repo.setReminded(b.id); continue; }
-      repo.setReminded(b.id);
-      if (emailClient("recordatorio", b, null)) sent++;
+    if (first > 0) {
+      for (const b of repo.reminderCandidates(n.day, to)) {
+        const u = until(b);
+        if (u <= 30 || u > first) continue;
+        repo.setReminded(b.id);
+        // Si se confirmó hace muy poco, el correo de confirmación ya sirve de recordatorio.
+        if (recent(b.updated_at, 3) && u < 12 * 60) continue;
+        if (emailClient("recordatorio", b, null)) sent++;
+      }
+    }
+    // El segundo recordatorio solo tiene sentido si llega después del primero.
+    if (extra > 0 && (first === 0 || extra < first)) {
+      for (const b of repo.reminder2Candidates(n.day, to)) {
+        const u = until(b);
+        if (u <= 20 || u > extra) continue;
+        const h = clientHistory(b.phone);
+        if (!h || !h.flagged) continue;
+        repo.setReminded2(b.id);
+        if (recent(b.reminded_at, 1) || (recent(b.updated_at, 1))) continue;
+        if (emailClient("recordatorio", b, null, { second: true })) sent++;
+      }
     }
     return sent;
   }

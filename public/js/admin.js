@@ -11,6 +11,8 @@
   let agendaDay;
   let lastPending = null;
   let emailEnabled = false;
+  let reminderExtra = 0; // horas del recordatorio extra (0 = no hay)
+  let cancelId = null;
   const shown = new Map(); // citas en pantalla, por id
 
   const DOW = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
@@ -74,8 +76,29 @@
   async function openTeam() {
     $("#team").hidden = false;
     renderTeam();
-    try { $("#set-cancel").value = String((await api("/api/admin/settings")).cancelHours); } catch {}
+    try {
+      const s = await api("/api/admin/settings");
+      $("#set-cancel").value = String(s.cancelHours);
+      setSelect($("#set-reminder"), s.reminderHours); setSelect($("#set-reminder-extra"), s.reminderExtraHours);
+      $("#rem-hint").textContent = s.emailEnabled
+        ? "Se envían por correo a las citas confirmadas de clientes que dejaron su correo."
+        : "⚠ El envío de correos no está activo en este servidor: por ahora no salen recordatorios.";
+    } catch {}
   }
+  // Si el valor guardado no está en la lista, se agrega como opción.
+  function setSelect(sel, v) {
+    if (![...sel.options].some((o) => o.value === String(v))) sel.add(new Option(`${v} horas antes`, String(v)));
+    sel.value = String(v);
+  }
+  $$("[data-setting]").forEach((sel) => sel.addEventListener("change", async () => {
+    try {
+      const key = sel.dataset.setting, v = Number(sel.value);
+      const label = key === "reminderExtraHours" ? "Recordatorio extra" : "Recordatorio";
+      await api("/api/admin/settings", { method: "PUT", body: { [key]: v } });
+      if (key === "reminderExtraHours") reminderExtra = v;
+      toast(v ? `${label} ${v} h antes` : `${label} desactivado`);
+    } catch (err) { toast(err.message); }
+  }));
   $("#set-cancel").addEventListener("change", async (e) => {
     try {
       const r = await api("/api/admin/settings", { method: "PUT", body: { cancelHours: Number(e.target.value) } });
@@ -123,7 +146,9 @@
       confirmada: `¡Hola ${first}! Tu cita en ${brand} para ${svcNames(b.services)}${withStaff} quedó CONFIRMADA ${when} ¡Te esperamos! 💈`,
       rechazada: `Hola ${first}, lamentablemente no podemos atenderte ${when} ¿Te sirve otro horario? Puedes reservar de nuevo en la app.`,
       recordatorio: `¡Hola ${first}! Te recordamos tu cita en ${brand}${withStaff} ${when} ¡Te esperamos!`,
-      cancelada: `Hola ${first}, tuvimos que cancelar tu cita ${when} Disculpa las molestias, reserva otro espacio cuando gustes.`,
+      cancelada: b.cancelled_by === "cliente"
+        ? `Hola ${first}, listo: cancelamos tu cita ${when} como nos pediste. ¡Te esperamos en otra ocasión!`
+        : `Hola ${first}, tuvimos que cancelar tu cita ${when} Disculpa las molestias, reserva otro espacio cuando gustes.`,
     }[kind] || "";
     return `https://wa.me/${b.phone}?text=${encodeURIComponent(text)}`;
   }
@@ -150,7 +175,7 @@
       actions.push(`<button class="btn btn--ghost" data-set="completada" data-id="${b.id}">Atendido</button>`);
       actions.push(`<button class="btn btn--ghost" data-set="no-asistio" data-id="${b.id}">No vino</button>`);
       if (b.phone) actions.push(`<a class="btn btn--ghost" target="_blank" rel="noopener" href="${waLink(b, "recordatorio")}">Recordar</a>`);
-      actions.push(`<button class="btn btn--ghost" data-set="cancelada" data-id="${b.id}">Cancelar</button>`);
+      actions.push(`<button class="btn btn--ghost" data-cancel="${b.id}">Cancelar</button>`);
     }
     if (done && b.status !== "completada") actions.push(`<button class="btn btn--ghost" data-set="confirmada" data-id="${b.id}">Reactivar</button>`);
     const local = b.phone.startsWith("506") && b.phone.length === 11 ? b.phone.slice(3).replace(/(\d{4})(\d{4})/, "$1 $2") : "+" + b.phone;
@@ -158,16 +183,32 @@
     return `<article class="bk bk--${b.status} ${done ? "bk--done" : ""}">
       <div class="bk__top">
         <span class="bk__time">${showDate ? DOW[asDate(b.day).getDay()] + " " + asDate(b.day).getDate() + " · " : ""}${fmtTime(b.start)} – ${fmtTime(b.start + b.minutes)}</span>
-        <span class="bk__status bk__status--${b.status}">${STATUS[b.status]}</span>
+        <span class="bk__status bk__status--${b.status}">${STATUS[b.status]}${b.status === "cancelada" && b.cancelled_by
+          ? ` <span class="bk__by">· ${b.cancelled_by === "cliente" ? "por el cliente" : "por nosotros"}</span>` : ""}</span>
       </div>
       <p class="bk__name">${esc(b.name)}${!agendaFilter && C.categories.length > 1 ? ` <span class="tag tag--cat">${esc(catLabel(b.category))}</span>` : ""}</p>
       <p class="bk__meta">${esc(svcNames(b.services))} · ${fmtMoney(b.total)}</p>
       <p class="bk__meta">${phone}${b.source === "panel" ? " · agregada en el panel" : ""}</p>
       ${b.email ? `<p class="bk__meta">✉ ${esc(b.email)}</p>` : ""}
       ${b.note ? `<p class="bk__note">${esc(b.note)}</p>` : ""}
+      ${historyHTML(b)}
       ${actions.length ? `<div class="bk__actions">${actions.join("")}</div>` : ""}
     </article>`;
   }
+
+  // Historial del cliente (últimos 6 meses): cancelaciones suyas y veces que no vino.
+  function historyHTML(b) {
+    const h = b.history;
+    if (!h || (!h.cancels && !h.noShows) || done(b)) return "";
+    const parts = [];
+    if (h.cancels) parts.push(`canceló ${h.cancels} ${h.cancels === 1 ? "vez" : "veces"}${h.late ? ` (${h.late} a última hora)` : ""}`);
+    if (h.noShows) parts.push(`no vino ${h.noShows} ${h.noShows === 1 ? "vez" : "veces"}`);
+    const txt = parts.join(" · ");
+    return h.flagged
+      ? `<p class="bk__hist bk__hist--warn">⚠ Cliente con historial: ${txt} en los últimos 6 meses.${reminderExtra ? ` Le llega un recordatorio extra ${reminderExtra} h antes.` : ""}</p>`
+      : `<p class="bk__hist">Historial: ${txt} en los últimos 6 meses.</p>`;
+  }
+  const done = (b) => !["pendiente", "confirmada"].includes(b.status);
 
   /* ---------- Agenda ---------- */
   async function renderAgenda() {
@@ -221,7 +262,8 @@
 
   async function refreshBadge() {
     try {
-      const { pending: total, pendingBy = {}, today, emailEnabled: mailOn } = await api("/api/admin/summary");
+      const { pending: total, pendingBy = {}, today, emailEnabled: mailOn, reminderExtraHours = 0 } = await api("/api/admin/summary");
+      reminderExtra = reminderExtraHours;
       const pending = agendaFilter ? (pendingBy[agendaFilter] || 0) : total;
       C.today = today; emailEnabled = mailOn;
       $("#new-email").hidden = !mailOn;
@@ -237,6 +279,24 @@
     } catch {}
   }
 
+  // Cambia el estado de una cita. Si el cliente dejó correo, el aviso le llega por ahí; si no, abrimos WhatsApp
+  // (la ventana se abre antes del await para que el navegador no la bloquee).
+  async function changeStatus(id, status, extra = {}) {
+    const known = shown.get(id);
+    const viaEmail = emailEnabled && known && known.email;
+    // Si el cliente fue quien pidió cancelar, ya lo sabe: no hace falta escribirle.
+    const notifies = ["confirmada", "rechazada", "cancelada"].includes(status) && extra.by !== "cliente";
+    const win = notifies && !viaEmail && known && known.phone ? window.open("", "_blank") : null;
+    try {
+      const b = await api(`/api/admin/bookings/${id}`, { method: "PATCH", body: { status, ...extra } });
+      const link = waLink(b, status);
+      if (win && link) win.location = link; else if (win) win.close();
+      toast(b.emailed ? `Cita ${STATUS[status]} · correo enviado al cliente` : `Cita ${STATUS[status]}`);
+    } catch (err) { if (win) win.close(); toast(err.message); }
+    refreshBadge();
+    return go(view);
+  }
+
   /* ---------- Eventos ---------- */
   document.addEventListener("click", async (e) => {
     const el = e.target.closest("button, a");
@@ -246,21 +306,21 @@
     if (ds.aday) { agendaDay = ds.aday; return renderAgenda().catch((err) => toast(err.message)); }
     if (ds.set) {
       const status = ds.set;
-      if (["cancelada", "rechazada"].includes(status) && !confirm(`¿Marcar como ${STATUS[status]}?`)) return;
-      // Si el cliente dejó correo, el aviso le llega por ahí. Si no, abrimos WhatsApp
-      // (la ventana se abre antes del await para que el navegador no la bloquee).
-      const known = shown.get(ds.id);
-      const viaEmail = emailEnabled && known && known.email;
-      const notifies = ["confirmada", "rechazada", "cancelada"].includes(status);
-      const win = notifies && !viaEmail && known && known.phone ? window.open("", "_blank") : null;
-      try {
-        const b = await api(`/api/admin/bookings/${ds.id}`, { method: "PATCH", body: { status } });
-        const link = waLink(b, status);
-        if (win && link) win.location = link; else if (win) win.close();
-        toast(b.emailed ? `Cita ${STATUS[status]} · correo enviado al cliente` : `Cita ${STATUS[status]}`);
-      } catch (err) { if (win) win.close(); toast(err.message); }
-      refreshBadge();
-      return go(view);
+      if (status === "rechazada" && !confirm(`¿Marcar como ${STATUS[status]}?`)) return;
+      return changeStatus(ds.id, status);
+    }
+    if (ds.cancel) {
+      const b = shown.get(ds.cancel);
+      cancelId = ds.cancel;
+      $("#cancel-who").innerHTML = b ? `<strong>${esc(b.name)}</strong><small>${esc(longDate(b.day))} · ${fmtTime(b.start)} · ${esc(svcNames(b.services))}</small>` : "";
+      $("#cancel-notify").textContent = b && b.email && emailEnabled ? "El cliente recibe un correo con la cancelación."
+        : b && b.phone ? "Si cancelan ustedes, se abre WhatsApp con el mensaje listo para avisarle." : "";
+      $("#cancel-flow").hidden = false;
+      return;
+    }
+    if (ds.cancelBy) {
+      $("#cancel-flow").hidden = true;
+      return changeStatus(cancelId, "cancelada", { by: ds.cancelBy });
     }
     if (ds.unblock) {
       if (!confirm("¿Quitar este bloqueo?")) return;
@@ -271,6 +331,7 @@
       case "logout": return logout();
       case "team": return openTeam();
       case "close-team": $("#team").hidden = true; return;
+      case "close-cancel": $("#cancel-flow").hidden = true; return;
       case "new-booking": return openNew();
       case "close-new": $("#new-booking").hidden = true; return;
       case "cal-prev": calMonth = shiftMonth(calMonth, -1); return renderSchedule();

@@ -554,3 +554,102 @@ test("plazo de cancelación configurable desde el panel", async (t) => {
   assert.equal((await c("POST", `/api/bookings/${hoy.id}/cancel`)).status, 200);
   assert.equal((await c("PUT", "/api/admin/settings", { cancelHours: 0 })).status, 403);
 });
+
+/* ---------------- Cancelaciones, historial del cliente y recordatorios ---------------- */
+
+test("cancelar desde el panel: quién canceló, correo según el caso e historial del cliente", async (t) => {
+  // Lunes 9 de noviembre, 8:00 a.m.
+  const { admin, mails } = await setup(t);
+  const adm = await admin();
+  const mk = async (day, start) => (await adm("POST", "/api/admin/bookings",
+    { services: ["corte"], day, start, name: "Ana Mora", phone: "8777 6666", email: "ana@example.com" })).body;
+  const [b1, b2, b3, b4, b5] = [await mk("2026-11-10", 600), await mk("2026-11-11", 600), await mk("2026-11-12", 600),
+    await mk("2026-11-13", 600), await mk("2026-11-09", 720)];
+  await tick();
+
+  // El cliente avisó por WhatsApp (26 horas antes): cuenta para su historial, no es de última hora
+  const c1 = await adm("PATCH", `/api/admin/bookings/${b1.id}`, { status: "cancelada", by: "cliente" });
+  assert.equal(c1.status, 200);
+  assert.equal(c1.body.cancelled_by, "cliente");
+  assert.deepEqual(c1.body.history, { cancels: 1, late: 0, noShows: 0, completed: 0, flagged: false });
+  await tick();
+  assert.match(mails.at(-1).html, /como nos pediste/);
+
+  // Cancela el negocio: no cuenta para el cliente
+  const c2 = await adm("PATCH", `/api/admin/bookings/${b2.id}`, { status: "cancelada" });
+  assert.equal(c2.body.cancelled_by, "negocio");
+  assert.equal(c2.body.history.cancels, 1);
+  await tick();
+  assert.match(mails.at(-1).html, /tuvo que cancelar/);
+
+  // Hoy al mediodía (4 horas antes) vuelve a cancelar: es a última hora
+  const c5 = await adm("PATCH", `/api/admin/bookings/${b5.id}`, { status: "cancelada", by: "cliente" });
+  assert.deepEqual([c5.body.history.cancels, c5.body.history.late, c5.body.history.flagged], [2, 1, false]);
+
+  // Si no vino a una cita, queda marcado como cliente con historial
+  await adm("PATCH", `/api/admin/bookings/${b3.id}`, { status: "no-asistio" });
+  const list = (await adm("GET", "/api/admin/bookings?from=2026-11-09&to=2026-11-20")).body.bookings;
+  const h4 = list.find((b) => b.id === b4.id).history;
+  assert.deepEqual(h4, { cancels: 2, late: 1, noShows: 1, completed: 0, flagged: true });
+  assert.equal(list.find((b) => b.id === b2.id).cancelled_by, "negocio");
+
+  // Reactivar una cita cancelada la saca del historial
+  await adm("PATCH", `/api/admin/bookings/${b1.id}`, { status: "confirmada" });
+  const again = (await adm("GET", "/api/admin/bookings?from=2026-11-09&to=2026-11-20")).body.bookings;
+  assert.equal(again.find((b) => b.id === b1.id).cancelled_by, "");
+  assert.equal(again.find((b) => b.id === b4.id).history.cancels, 1);
+});
+
+test("cancelar desde la app cuenta como cancelación del cliente (y de última hora si faltan menos de 24 h)", async (t) => {
+  const { user, admin } = await setup(t);
+  const c = await user({ phone: "86005544" });
+  const hoy = (await c("POST", "/api/bookings", booking({ day: "2026-11-09", start: 900 }))).body; // 3:00 p.m.
+  assert.equal((await c("POST", `/api/bookings/${hoy.id}/cancel`)).status, 200);
+  const adm = await admin();
+  const b = (await adm("GET", "/api/admin/bookings?from=2026-11-09&to=2026-11-09")).body.bookings[0];
+  assert.equal(b.cancelled_by, "cliente");
+  assert.deepEqual([b.history.cancels, b.history.late], [1, 1]);
+});
+
+test("recordatorios: horas configurables y uno extra para clientes con historial", async (t) => {
+  let now = new Date("2026-11-09T14:00:00Z"); // lunes 8:00 a.m.
+  const { admin, mails, handler, call } = await setup(t, {}, { clock: () => now });
+  const adm = await admin();
+  // Ajustes
+  assert.deepEqual((await adm("GET", "/api/admin/settings")).body,
+    { cancelHours: 2, reminderHours: 24, reminderExtraHours: 3, emailEnabled: true });
+  assert.equal((await adm("PUT", "/api/admin/settings", { reminderHours: 100 })).status, 400);
+  assert.equal((await adm("PUT", "/api/admin/settings", { reminderExtraHours: -1 })).status, 400);
+  assert.deepEqual((await adm("PUT", "/api/admin/settings", { reminderHours: 6, reminderExtraHours: 2 })).body,
+    { reminderHours: 6, reminderExtraHours: 2 });
+  assert.equal((await call("PUT", "/api/admin/settings", { reminderHours: 1 })).status, 401);
+
+  const mk = async (start, name, phone, email) => (await adm("POST", "/api/admin/bookings",
+    { services: ["corte"], day: "2026-11-10", start, name, phone, email })).body;
+  // Rosa no vino la semana pasada → tiene historial
+  const old = (await adm("POST", "/api/admin/bookings", { services: ["corte"], day: "2026-11-09", start: 540, name: "Rosa", phone: "86001111", email: "rosa@example.com" })).body;
+  await adm("PATCH", `/api/admin/bookings/${old.id}`, { status: "no-asistio" });
+  await mk(600, "Rosa", "86001111", "rosa@example.com"); // martes 10:00
+  await mk(660, "Luis", "86002222", "luis@example.com"); // martes 11:00
+  await tick();
+  const count = () => mails.filter((m) => /Recordatorio/.test(m.subject)).length;
+
+  assert.equal(handler.runReminders(), 0); // faltan más de 6 horas
+  now = new Date("2026-11-10T11:00:00Z"); // martes 5:00 a.m.: a Rosa le faltan 5 h y a Luis 6 h
+  assert.equal(handler.runReminders(), 2);
+  assert.equal(handler.runReminders(), 0);
+  now = new Date("2026-11-10T14:00:00Z"); // 8:00 a.m.: a Rosa le faltan 2 h → recordatorio extra, solo a ella
+  assert.equal(handler.runReminders(), 1);
+  assert.equal(handler.runReminders(), 0);
+  await tick();
+  assert.equal(count(), 3);
+  const extra = mails.filter((m) => /Recordatorio/.test(m.subject)).at(-1);
+  assert.equal(extra.to, "rosa@example.com");
+  assert.match(extra.html, /en pocas horas/);
+
+  // Recordatorios desactivados
+  await adm("PUT", "/api/admin/settings", { reminderHours: 0, reminderExtraHours: 0 });
+  await mk(900, "Eva", "86003333", "eva@example.com"); // 3:00 p.m.
+  assert.equal(handler.runReminders(), 0);
+});
+

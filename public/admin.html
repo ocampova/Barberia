@@ -227,6 +227,28 @@
       </footer>
     </div>
 
+    <!-- CANCELAR CITA -->
+    <div class="flow" id="cancel-flow" hidden role="dialog" aria-modal="true" aria-labelledby="cancel-title">
+      <header class="flow__head">
+        <span></span>
+        <strong id="cancel-title">Cancelar cita</strong>
+        <button class="iconbtn" data-action="close-cancel" aria-label="Cerrar">×</button>
+      </header>
+      <div class="flow__body pane">
+        <p class="cancel-who" id="cancel-who"></p>
+        <h2 class="adm-section" style="margin-top:6px">¿Quién cancela?</h2>
+        <button class="choice" data-cancel-by="cliente">
+          <strong>El cliente avisó</strong>
+          <small>Escribió por WhatsApp, llamó o lo dijo en persona. Cuenta para su historial de cancelaciones.</small>
+        </button>
+        <button class="choice" data-cancel-by="negocio">
+          <strong>Cancelamos nosotros</strong>
+          <small>Un imprevisto del negocio. No cuenta para el historial del cliente.</small>
+        </button>
+        <p class="adm-hint" id="cancel-notify"></p>
+      </div>
+    </div>
+
     <!-- EQUIPO -->
     <div class="flow" id="team" hidden role="dialog" aria-modal="true" aria-labelledby="team-title">
       <header class="flow__head">
@@ -250,6 +272,31 @@
               <option value="48">48 horas antes (dos días)</option>
             </select></label>
           <p class="adm-hint" style="margin:0">Después de ese plazo, la app les muestra un botón para escribir por WhatsApp.</p>
+        </section>
+
+        <section class="card-form" style="margin-top:14px">
+          <h2>Recordatorios</h2>
+          <p class="adm-hint" style="margin:0 0 10px" id="rem-hint">Se envían por correo a las citas confirmadas.</p>
+          <label class="field"><span>Recordatorio de la cita</span>
+            <select id="set-reminder" data-setting="reminderHours">
+              <option value="0">No enviar</option>
+              <option value="2">2 horas antes</option>
+              <option value="3">3 horas antes</option>
+              <option value="6">6 horas antes</option>
+              <option value="12">12 horas antes</option>
+              <option value="24">24 horas antes (un día)</option>
+              <option value="48">48 horas antes (dos días)</option>
+            </select></label>
+          <label class="field"><span>Recordatorio extra para clientes con historial</span>
+            <select id="set-reminder-extra" data-setting="reminderExtraHours">
+              <option value="0">No enviar</option>
+              <option value="1">1 hora antes</option>
+              <option value="2">2 horas antes</option>
+              <option value="3">3 horas antes</option>
+              <option value="4">4 horas antes</option>
+              <option value="6">6 horas antes</option>
+            </select></label>
+          <p class="adm-hint" style="margin:0">"Con historial": en los últimos 6 meses no vino a una cita, canceló 2 veces con menos de 24 horas o canceló 3 veces. En sus citas verás un aviso ⚠.</p>
         </section>
 
         <h2 class="adm-section">Equipo</h2>

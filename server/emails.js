@@ -37,7 +37,9 @@ const KINDS = {
     subject: (b) => `Recordatorio: tu cita es ${b.whenShort}`,
     badge: "Recordatorio",
     title: (b) => `¡Hola ${b.first}!`,
-    lead: () => "Te recordamos tu cita. Si no puedes llegar, cancélala desde el enlace de abajo para que otro cliente pueda usar el espacio.",
+    lead: (b) => b.second
+      ? "Tu cita es en pocas horas. ¡Te esperamos! Si al final no puedes llegar, avísanos cuanto antes para que otro cliente pueda usar el espacio."
+      : "Te recordamos tu cita. Si no puedes llegar, cancélala desde el enlace de abajo para que otro cliente pueda usar el espacio.",
     calendar: false,
   },
   rechazada: {
@@ -54,7 +56,9 @@ const KINDS = {
     title: (b) => `Hola ${b.first},`,
     lead: (b) => b.byClient
       ? "Cancelaste tu cita y el espacio quedó libre. ¡Te esperamos en otra ocasión!"
-      : "La barbería tuvo que cancelar tu cita. Disculpa las molestias. Puedes reservar otro espacio cuando gustes.",
+      : b.byRequest
+        ? "Cancelamos tu cita como nos pediste y el espacio quedó libre. ¡Te esperamos en otra ocasión!"
+        : `${b.place.charAt(0).toUpperCase() + b.place.slice(1)} tuvo que cancelar tu cita. Disculpa las molestias. Puedes reservar otro espacio cuando gustes.`,
     calendar: false,
     cta: "Reservar de nuevo",
   },
@@ -65,7 +69,7 @@ const KINDS = {
  * @param b     la cita (con services como ids)
  * @param link  URL para ver o cancelar la cita, o null
  */
-function render(kind, b, config, { link = null, siteUrl = null, byClient = false } = {}) {
+function render(kind, b, config, { link = null, siteUrl = null, byClient = false, byRequest = false, second = false } = {}) {
   const k = KINDS[kind];
   if (!k) throw new Error("Tipo de correo desconocido: " + kind);
   const svc = b.services.map((id) => config.services.find((s) => s.id === id)?.name || id);
@@ -74,6 +78,8 @@ function render(kind, b, config, { link = null, siteUrl = null, byClient = false
     first: b.name.split(" ")[0],
     whenShort: `${longDate(b.day).split(",")[0]} a las ${fmtTime(b.start)}`,
     byClient,
+    byRequest,
+    second,
     brand: (cat && cat.brand) || config.name,
     place: (cat && cat.place) || "la barbería",
   };

@@ -157,3 +157,16 @@
 /* ---------- Modo plataforma ---------- */
 .plat-banner { margin: 0; padding: 8px 20px; background: rgba(var(--accent-rgb), .14); color: var(--gold-2); font-size: 12.5px; }
 .plat-banner strong { font-weight: 600; }
+
+/* Historial del cliente y cancelación */
+.bk__hist { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
+.bk__hist--warn { padding: 8px 10px; border-radius: 10px; color: #f3c27a; background: rgba(243, 160, 60, .1); border: 1px solid rgba(243, 160, 60, .3); }
+.bk__by { font-weight: 400; opacity: .8; }
+.cancel-who { margin: 0 0 8px; padding: 12px 14px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
+.cancel-who strong { display: block; font-size: 17px; }
+.cancel-who small { color: var(--muted); }
+.choice { display: block; width: 100%; text-align: left; margin: 0 0 10px; padding: 14px 16px; border-radius: 14px;
+  background: var(--surface); border: 1px solid var(--line); color: var(--text); font: inherit; cursor: pointer; }
+.choice:hover, .choice:focus-visible { border-color: var(--gold); }
+.choice strong { display: block; font-size: 16px; margin-bottom: 4px; }
+.choice small { color: var(--muted); font-size: 13px; line-height: 1.4; }
