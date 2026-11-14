@@ -89,7 +89,7 @@ test("config pública: estado abierto/cerrado según el horario", async (t) => {
 test("registro, sesión, perfil y cierre de sesión", async (t) => {
   const { browser, call } = await setup(t);
   const c = browser();
-  assert.deepEqual((await c("GET", "/api/me")).body, { user: null });
+  assert.deepEqual((await c("GET", "/api/me")).body, { user: null, platform: null });
 
   const r = await c("POST", "/api/auth/register", { acceptPrivacy: true,  name: "Ana Mora", phone: "8777 6655", email: "Ana@Example.com", password: "secreto123" });
   assert.equal(r.status, 201);

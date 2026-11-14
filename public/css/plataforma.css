@@ -1,0 +1,39 @@
+/* Plataforma: tablero de todos los negocios */
+.plat { max-width: 720px; }
+.plat-mark { margin: 0 auto; width: 72px; height: 72px; border-radius: 18px; display: grid; place-items: center;
+  border: 1.5px solid var(--gold); color: var(--gold-2); font: 700 26px var(--display); letter-spacing: .06em; }
+
+.totals { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 8px 20px 4px; }
+.totals div { padding: 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+.totals strong { display: block; font: 600 22px var(--display); color: var(--gold-2); }
+.totals small { color: var(--muted); font-size: 11px; }
+
+.biz { padding: 16px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line);
+  border-top: 3px solid var(--biz, var(--gold)); }
+.biz__head { display: flex; align-items: center; gap: 14px; }
+.biz__head img { width: 56px; height: 56px; object-fit: contain; flex: none; }
+.biz__name { margin: 0; font: 600 19px var(--display); text-transform: uppercase; letter-spacing: .04em; }
+.biz__url { color: var(--muted); font-size: 13px; word-break: break-all; }
+.biz__stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0; }
+.biz__stats div { padding: 10px; border-radius: 12px; background: var(--surface-2); }
+.biz__stats strong { display: block; font: 600 20px var(--display); }
+.biz__stats small { color: var(--muted); font-size: 11px; }
+.biz__stats .is-alert strong { color: var(--gold-2); }
+.biz__meta { color: var(--muted); font-size: 13px; margin: 0 0 6px; }
+.biz__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.biz__actions .btn { min-height: 40px; padding: 0 14px; font-size: 13px; }
+.biz details { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+.biz summary { cursor: pointer; font-weight: 500; }
+.biz .team-row:last-of-type { border-bottom: 0; }
+.biz form { display: flex; gap: 8px; margin-top: 10px; }
+.biz form input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line); color: var(--text); font: inherit; }
+.biz form .btn { min-height: 40px; padding: 0 14px; font-size: 13px; }
+
+.log { display: grid; gap: 2px; }
+.log div { display: grid; grid-template-columns: 8.5em 1fr; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.log time { color: var(--muted); }
+.log em { font-style: normal; color: var(--gold-2); }
+
+@media (max-width: 520px) {
+  .totals { grid-template-columns: repeat(2, 1fr); }
+}

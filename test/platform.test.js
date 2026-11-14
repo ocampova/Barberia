@@ -112,11 +112,8 @@ test("clientes, citas y sesiones aislados entre negocios", async (t) => {
   // La cita del salón no ocupa la agenda de la barbería
   assert.ok((await call(V, "GET", "/api/availability?services=corte&from=2026-11-10&days=1")).body.days[0].slots.includes(600));
 
-  // El dueño de la plataforma (ADMIN_EMAIL) administra cada negocio por separado
-  const owner = { login: "allan@example.com", password: "clave-del-dueno" };
-  assert.equal((await call(S, "POST", "/api/auth/login", owner)).status, 200);
-  const pend = (await call(S, "GET", "/api/admin/bookings?status=pendiente")).body.bookings;
-  assert.deepEqual(pend.map((b) => b.services[0]), ["color"]);
+  // El dueño de la plataforma no tiene cuenta de administrador dentro de los negocios
+  assert.equal((await call(S, "POST", "/api/auth/login", { login: "allan@example.com", password: "clave-del-dueno" })).status, 401);
   assert.equal((await call(V, "GET", "/api/admin/bookings")).status, 403); // en V la sesión es la de Rosa (cliente)
 });
 
@@ -147,7 +144,11 @@ test("migración: los datos del salón pasan de la base de Víctor a la de Seima
   assert.deepEqual(seimar.dayGet("salon", "2026-12-24"), []);
   assert.equal(seimar.setting("cancelHours", 0), 6);
   assert.equal(seimar.userByEmail("rosa@example.com").id, rosa);   // la clienta conserva su cuenta (y su historial)
-  assert.equal(seimar.userByEmail("allan@example.com").role, "admin");
+  // La cuenta del dueño se copió, pero pasó a ser de cliente: su acceso ahora es la plataforma
+  assert.equal(seimar.userByEmail("allan@example.com").role, "cliente");
+  assert.equal(victor.userByEmail("allan@example.com").role, "cliente");
+  const owner = p.pdb.adminByEmail("allan@example.com");
+  assert.ok(owner && require("../server/auth").verifyPassword("clave-del-dueno", owner.pass_hash));
   assert.equal(seimar.userByEmail("luis@example.com"), undefined); // cliente solo de la barbería: no se copia
   // Víctor quedó solo con la barbería
   assert.deepEqual(victor.bookingsRange("2026-11-01", "2026-12-31").map((b) => b.id), ["b1"]);

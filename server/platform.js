@@ -10,6 +10,8 @@ const { openDb, repo } = require("./db");
 const { createApp } = require("./app");
 const { createBackups } = require("./backup");
 const { nowIn } = require("./time");
+const { openPlatformDb } = require("./platform-db");
+const { createPlatformAdmin } = require("./platform-admin");
 
 const hostOf = (h) => String(h || "").toLowerCase().replace(/:\d+$/, "").replace(/\.$/, "");
 
@@ -18,7 +20,9 @@ function platformDomain(env) {
   if (env.PLATFORM_DOMAIN) return hostOf(env.PLATFORM_DOMAIN);
   if (!env.PUBLIC_URL) return null;
   try {
-    const parts = new URL(env.PUBLIC_URL).hostname.split(".");
+    const host = new URL(env.PUBLIC_URL).hostname;
+    if (host.endsWith(".localhost")) return "localhost";
+    const parts = host.split(".");
     return parts.length > 2 ? parts.slice(1).join(".") : null;
   } catch { return null; }
 }
@@ -92,7 +96,11 @@ function createPlatform({ negocios, dataDir, env = process.env, defaultSlug, clo
   const domain = platformDomain(env);
   const def = defaultSlug || env.DEFAULT_NEGOCIO || negocios[0].slug;
   const fileOf = (n) => path.join(dataDir, n.dbFile || `${n.slug}.db`);
-  const urlOf = (n) => (domain ? `https://${n.slug}.${domain}` : n.slug === def && env.PUBLIC_URL ? env.PUBLIC_URL.replace(/\/+$/, "") : null);
+  // Esquema y puerto salen de PUBLIC_URL (en desarrollo: http://victoraguilar.localhost:8080)
+  const pub = (() => { try { return new URL(env.PUBLIC_URL); } catch { return null; } })();
+  const scheme = pub && pub.hostname.endsWith(domain || "\0") ? pub.protocol : "https:";
+  const port = pub && scheme === pub.protocol && pub.port ? `:${pub.port}` : "";
+  const urlOf = (n) => (domain ? `${scheme}//${n.slug}.${domain}${port}` : n.slug === def && env.PUBLIC_URL ? env.PUBLIC_URL.replace(/\/+$/, "") : null);
   const fromAddress = String(env.EMAIL_FROM || "").match(/<([^>]+)>/)?.[1] || env.EMAIL_FROM || "";
 
   // Migraciones de datos (una sola vez)
@@ -101,11 +109,20 @@ function createPlatform({ negocios, dataDir, env = process.env, defaultSlug, clo
     if (a && b) migrateSplit({ fromFile: fileOf(a), toFile: fileOf(b), category: m.category, backupDir: path.join(dataDir, "backups"), log });
   }
 
+  // La administración de la plataforma se crea después de los negocios; ellos la consultan al recibir peticiones.
+  let admin = null;
+  const platformAuth = {
+    cookieName: "va_plat",
+    redeem: (t, slug) => (admin ? admin.platformAuth.redeem(t, slug) : null),
+    verify: (req, slug) => (admin ? admin.platformAuth.verify(req, slug) : null),
+  };
+
   const tenants = negocios.map((n) => {
     const db = openDb(fileOf(n));
     const r = repo(db);
     const nEnv = {
       ...env,
+      ADMIN_EMAIL: "", ADMIN_PASSWORD: "", ADMIN_FORCE: "", // el dueño se administra desde la plataforma
       PUBLIC_URL: urlOf(n) || "",
       EMAIL_FROM: fromAddress ? `${n.name} <${fromAddress}>` : "",
       EMAIL_REPLY_TO: n.replyTo || env.EMAIL_REPLY_TO || "",
@@ -116,13 +133,17 @@ function createPlatform({ negocios, dataDir, env = process.env, defaultSlug, clo
       const o = negocios.find((x) => x.slug === rel.slug);
       return o && { slug: o.slug, name: o.name, logo: o.logos.main, url: urlOf(o), pitch: rel.pitch || "" };
     }).filter((x) => x && x.url);
-    const app = createApp({ repo: r, config: n, env: nEnv, backups, clock, mailer, related });
-    return { slug: n.slug, config: n, db, repo: r, app, backups, url: urlOf(n) };
+    const app = createApp({ repo: r, config: n, env: nEnv, backups, clock, mailer, related, platformAuth });
+    return { slug: n.slug, config: n, db, repo: r, app, backups, url: urlOf(n), dbFile: fileOf(n) };
   });
+
+  const pdb = openPlatformDb(path.join(dataDir, "plataforma.db"));
+  admin = createPlatformAdmin({ tenants, pdb, env, log, clock: clock || (() => new Date()) });
   const bySlug = new Map(tenants.map((t) => [t.slug, t]));
   const byHost = new Map();
   for (const t of tenants) for (const h of t.config.hosts || []) byHost.set(hostOf(h), t);
 
+  const PLATFORM_LABEL = "plataforma";
   function resolve(hostHeader) {
     const host = hostOf(hostHeader);
     if (byHost.has(host)) return bySlug.get(byHost.get(host).slug);
@@ -135,7 +156,13 @@ function createPlatform({ negocios, dataDir, env = process.env, defaultSlug, clo
     return bySlug.get(def);
   }
 
+  function isPlatformHost(hostHeader) {
+    const host = hostOf(hostHeader);
+    return [domain, "localhost"].filter(Boolean).some((d) => host === `${PLATFORM_LABEL}.${d}`);
+  }
+
   function handler(req, res) {
+    if (isPlatformHost(req.headers.host)) return admin.handler(req, res);
     const t = resolve(req.headers.host);
     if (!t) {
       res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
@@ -165,9 +192,9 @@ function createPlatform({ negocios, dataDir, env = process.env, defaultSlug, clo
     }
   }
 
-  const close = () => { for (const t of tenants) { try { t.db.close(); } catch {} } };
+  const close = () => { for (const t of tenants) { try { t.db.close(); } catch {} } try { pdb.close(); } catch {} };
 
-  return { handler, resolve, tenants, domain, runReminders, runBackups, close };
+  return { handler, resolve, isPlatformHost, tenants, domain, runReminders, runBackups, close, pdb };
 }
 
 module.exports = { createPlatform, migrateSplit, platformDomain };

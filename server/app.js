@@ -34,7 +34,7 @@ function limiter(max, windowMs) {
   };
 }
 
-function createApp({ repo, config, env = process.env, clock = () => new Date(), notify, mailer, backups = null, related = [] }) {
+function createApp({ repo, config, env = process.env, clock = () => new Date(), notify, mailer, backups = null, related = [], platformAuth = null }) {
   /* ---------- Servicios ---------- */
   // La primera vez se copian de config.services. Después se administran desde el panel.
   if (!repo.serviceCount()) {
@@ -162,9 +162,12 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     admin: u.role === "admin", ...(u.role === "admin" ? { agenda: u.agenda || "" } : {}) });
   function requireAdmin(req) {
     const u = currentUser(req);
+    if (u && u.role === "admin") return u;
+    // Administración de la plataforma: entrada firmada, válida solo para este negocio.
+    const p = platformAuth ? platformAuth.verify(req, config.slug) : null;
+    if (p) return { id: -1, name: p.name, email: p.email, role: "admin", agenda: "", platform: true, platformAdminId: p.id };
     if (!u) throw new HttpError(401, "Inicia sesión para continuar.");
-    if (u.role !== "admin") throw new HttpError(403, "Esta cuenta no tiene acceso al panel.");
-    return u;
+    throw new HttpError(403, "Esta cuenta no tiene acceso al panel.");
   }
 
   function cleanPassword(v) {
@@ -213,7 +216,7 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
   // Nunca se promueve una cuenta que ya existía (alguien pudo registrarla antes con ese correo),
   // salvo con ADMIN_FORCE=1: recuperación explícita desde el hosting, que además fija la contraseña.
   if (!env.ADMIN_EMAIL) {
-    if (!repo.admins().length) console.warn("⚠  No hay administradores y falta ADMIN_EMAIL: nadie puede entrar al panel.");
+    if (!repo.admins().length && !platformAuth) console.warn("⚠  No hay administradores y falta ADMIN_EMAIL: nadie puede entrar al panel.");
   } else {
     const email = String(env.ADMIN_EMAIL).trim().toLowerCase();
     const password = String(env.ADMIN_PASSWORD || "");
@@ -375,13 +378,16 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
   route("POST", "/api/auth/logout", ({ req, res }) => {
     const token = parseCookies(req.headers.cookie)[COOKIE];
     if (token) repo.sessionDelete(tokenHash(token));
-    setSessionCookie(req, res, "", 0);
+    const cookies = [`${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0` + (secureCookie(req) ? "; Secure" : "")];
+    if (platformAuth) cookies.push(`${platformAuth.cookieName}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0` + (secureCookie(req) ? "; Secure" : ""));
+    res.setHeader("set-cookie", cookies);
     return { ok: true };
   });
 
   route("GET", "/api/me", ({ req }) => {
     const u = currentUser(req);
-    return { user: u ? publicUser(u) : null };
+    const p = platformAuth ? platformAuth.verify(req, config.slug) : null;
+    return { user: u ? publicUser(u) : null, platform: p ? { name: p.name, email: p.email } : null };
   });
 
   route("PATCH", "/api/me", ({ body, req }) => {
@@ -782,6 +788,7 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
       return res.end(JSON.stringify(manifest()));
     }
     if (pathname === "/admin" || pathname === "/admin/") pathname = "/admin.html";
+    if (pathname === "/plataforma.html" || pathname === "/js/plataforma.js") { res.writeHead(404); return res.end(); }
     if (pathname.endsWith("/")) pathname += "index.html";
     const file = path.normalize(path.join(PUBLIC_DIR, decodeURIComponent(pathname)));
     if (!file.startsWith(PUBLIC_DIR + path.sep)) { res.writeHead(403); return res.end(); }
@@ -845,6 +852,18 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     const url = new URL(req.url, "http://localhost");
     const ip = (env.TRUST_PROXY ? String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() : "") ||
       req.socket.remoteAddress || "?";
+
+    // Entrada desde la plataforma: canjea el pase de un solo uso y abre el panel.
+    if (url.pathname === "/__plataforma" && req.method === "GET") {
+      const r = platformAuth ? platformAuth.redeem(url.searchParams.get("t"), config.slug) : null;
+      if (!r) {
+        res.writeHead(403, { "content-type": "text/plain; charset=utf-8" });
+        return res.end("El pase venció o ya se usó. Vuelve a la plataforma y toca “Entrar al panel” de nuevo.");
+      }
+      res.writeHead(302, { location: "/admin", "cache-control": "no-store",
+        "set-cookie": `${r.name}=${r.cookie}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${r.maxAge}` + (secureCookie(req) ? "; Secure" : "") });
+      return res.end();
+    }
 
     if (!url.pathname.startsWith("/api/")) {
       if (req.method !== "GET" && req.method !== "HEAD") { res.writeHead(405); return res.end(); }

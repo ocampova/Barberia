@@ -699,11 +699,17 @@
   async function start() {
     try {
       const [cfg, me] = await Promise.all([api("/api/config"), api("/api/me")]);
-      if (!me.user || !me.user.admin) return showLogin(me.user ? "Esta cuenta no tiene acceso al panel." : "");
-      C = cfg; ME = me.user;
+      // Entrada desde la plataforma: acceso de administración sin cuenta dentro del negocio.
+      if (me.platform && !(me.user && me.user.admin)) {
+        ME = { id: -1, name: me.platform.name, email: me.platform.email, admin: true, agenda: "", platform: true };
+      } else if (!me.user || !me.user.admin) {
+        return showLogin(me.user ? "Esta cuenta no tiene acceso al panel." : "");
+      } else ME = me.user;
+      C = cfg;
     } catch (e) { return toast(e.message); }
     $("#login").hidden = true; $("#panel").hidden = false;
     $("#me-name").textContent = ME.name.split(" ")[0];
+    $("#plat-banner").hidden = !ME.platform;
     let saved = null;
     try { saved = localStorage.getItem("va-agenda-filter"); } catch {}
     agendaFilter = saved !== null && (saved === "" || C.categories.some((c) => c.id === saved)) ? saved : (ME.agenda || "");

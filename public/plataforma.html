@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0a09" />
+  <meta name="robots" content="noindex" />
+  <title>Plataforma · El Corte</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="stylesheet" href="css/admin.css" />
+  <link rel="stylesheet" href="css/plataforma.css" />
+</head>
+<body>
+  <div class="app plat">
+    <!-- LOGIN -->
+    <section id="login" class="login" hidden>
+      <div class="plat-mark" aria-hidden="true">EC</div>
+      <h1>Plataforma</h1>
+      <p class="adm-hint" style="margin:0;text-align:center">Administración de todos los negocios.</p>
+      <form id="login-form" novalidate>
+        <label class="field"><span>Correo</span><input name="email" type="email" autocomplete="username" required /></label>
+        <label class="field"><span>Contraseña</span><input name="password" type="password" autocomplete="current-password" required /></label>
+        <button class="btn btn--gold btn--block">Entrar</button>
+      </form>
+    </section>
+
+    <!-- TABLERO -->
+    <section id="dash" hidden>
+      <header class="topbar adm-top">
+        <h1>Plataforma</h1>
+        <div class="adm-top__actions">
+          <button class="link" data-action="password">Contraseña</button>
+          <button class="link" data-action="logout">Salir <span class="muted" id="me-name"></span></button>
+        </div>
+      </header>
+
+      <div class="totals" id="totals"></div>
+      <div class="list" id="biz-list"></div>
+
+      <section class="section">
+        <div class="section__head"><h2>Registro de accesos</h2></div>
+        <div id="log" class="log"></div>
+      </section>
+    </section>
+
+    <!-- CAMBIAR CONTRASEÑA -->
+    <div class="flow" id="pw-sheet" hidden role="dialog" aria-modal="true" aria-labelledby="pw-title">
+      <header class="flow__head">
+        <span></span><strong id="pw-title">Contraseña</strong>
+        <button class="iconbtn" data-action="close-sheet" aria-label="Cerrar">×</button>
+      </header>
+      <form class="flow__body pane" id="pw-form" novalidate>
+        <p class="adm-hint">Esta cuenta da acceso a todos los negocios: usa una contraseña larga que no uses en otro lado.</p>
+        <label class="field"><span>Contraseña actual</span><input name="current" type="password" autocomplete="current-password" /></label>
+        <label class="field"><span>Contraseña nueva (mínimo 10)</span><input name="password" type="password" autocomplete="new-password" minlength="10" /></label>
+        <button class="btn btn--gold btn--block">Guardar</button>
+      </form>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </div>
+  <script src="js/plataforma.js"></script>
+</body>
+</html>

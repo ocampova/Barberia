@@ -41,7 +41,7 @@ Un solo servidor atiende a **varios negocios independientes**, cada uno en su di
 - **Cada negocio tiene su propia base de datos:** clientes, citas, servicios, horario, ajustes y equipo. Los clientes de un negocio no existen en otro, aunque usen el mismo correo, y la sesión de uno no abre el otro.
 - **Marca por negocio:** nombre, logo, colores (`theme`), frase de portada (`hero`), lema, ubicación, teléfono, políticas, ícono de la app, manifest, correos y aviso de privacidad. El diseño de las pantallas es el mismo para todos.
 - **Negocios relacionados:** la tarjeta "En el mismo local" (`related`) enlaza a la app del otro negocio.
-- **El dueño de la plataforma** (`ADMIN_EMAIL`) se crea como administrador en cada negocio. Cada negocio suma a su equipo en **Ajustes → Equipo**.
+- **El equipo de cada negocio** (por ejemplo Víctor o Seidy) se maneja desde la plataforma o desde **Ajustes → Equipo** del panel. Cada quien solo entra al panel de su negocio.
 - Dentro de un negocio sigue habiendo **agendas** (`categories`): un negocio con varias sillas o profesionales puede tener varias, cada una con su horario y su cupo.
 
 **Agregar un negocio nuevo:**
@@ -49,6 +49,20 @@ Un solo servidor atiende a **varios negocios independientes**, cada uno en su di
 2. Pon su logo en `public/img/negocios/<slug>/logo.svg` y genera los íconos con `node brand/export.js`.
 3. Agrégalo a la lista en `server/negocios/index.js`.
 4. En Railway, ve a **Settings → Networking → Custom Domain** y escribe `<slug>.elcorte.app`, con su CNAME en Cloudflare.
+
+### Plataforma (`plataforma.elcorte.app`)
+
+Es la vista del dueño de la aplicación, para administrar todos los negocios:
+
+- **Su propia cuenta:** se crea con `ADMIN_EMAIL`. Si ya tenías una cuenta de administrador en algún negocio con ese correo, se usa la misma contraseña. Esa cuenta del negocio pasa a ser de cliente, así que el panel de cada negocio queda solo para su equipo.
+- **Tablero:**
+  - por negocio: clientes, clientes nuevos, citas del mes, citas por confirmar, próximos 7 días, última reserva y última copia de seguridad;
+  - acciones: **Copia ahora** y **Abrir app**.
+- **Entrar al panel:** abre el panel de ese negocio con un pase de un solo uso de 60 segundos. La entrada dura 8 horas, sirve solo para ese negocio y muestra el aviso "Modo plataforma".
+- **Equipo de cada negocio:** la persona crea su cuenta en la app del negocio, y después le das acceso con su correo o teléfono.
+- **Registro de accesos:** inicios de sesión (también los fallidos), entradas a cada panel y cambios de equipo.
+
+Si olvidas la contraseña de la plataforma, pon `ADMIN_PASSWORD` con una nueva y `ADMIN_FORCE=1`, despliega y entra. Luego **borra `ADMIN_FORCE`**.
 
 La primera vez que arrancó la plataforma, una **migración** pasó los datos del salón (servicios, horario, citas y las cuentas de quienes reservaron ahí) de la base de Víctor a la de Seimar, después de guardar una copia de seguridad (`/data/backups/antes-de-separar-salon-*.db`).
 
@@ -112,13 +126,12 @@ npm test             # pruebas automáticas
 
 | Variable | Valor |
 |---|---|
-| `ADMIN_EMAIL` | correo del primer administrador |
-| `ADMIN_PASSWORD` | contraseña inicial (mínimo 8 caracteres); se cambia después desde el perfil |
-| `ADMIN_NAME` | `Víctor Aguilar` |
-| `ADMIN_PHONE` | teléfono del administrador |
+| `ADMIN_EMAIL` | correo de tu cuenta de la plataforma |
+| `ADMIN_PASSWORD` | contraseña inicial de la plataforma (mínimo 8 caracteres); se cambia después desde la plataforma |
+| `ADMIN_NAME` | tu nombre |
 | `TRUST_PROXY` | `1` |
 | `RAILWAY_RUN_UID` | `0` (el volumen de Railway se monta como root) |
-| `ADMIN_FORCE` | Solo para recuperar el acceso: con `1`, al arrancar deja la cuenta de `ADMIN_EMAIL` como administradora con la contraseña `ADMIN_PASSWORD`. **Bórrala después de entrar.** |
+| `ADMIN_FORCE` | Solo para recuperar el acceso a la plataforma: con `1`, al arrancar le pone a `ADMIN_EMAIL` la contraseña `ADMIN_PASSWORD`. **Bórrala después de entrar.** |
 | `PUBLIC_URL` | `https://victoraguilar.elcorte.app` (cuando el dominio esté conectado) |
 
 Al arrancar, los registros (**Deployments → View logs**) muestran un resumen: si ve `ADMIN_EMAIL`, `TRUST_PROXY`, la ruta de la base de datos y si se creó el administrador.
@@ -144,6 +157,8 @@ Las variables están explicadas en `.env.example`. Importante: haz copias de seg
 |---|---|
 | `server/negocios/` | Un archivo por negocio: marca, contacto, políticas, agendas, y servicios y horario **iniciales** (después se editan en el panel) |
 | `server/platform.js` | Elige el negocio según la dirección, abre su base de datos y hace las migraciones |
+| `server/platform-admin.js`, `server/platform-db.js` | La plataforma: tu cuenta, el tablero, la entrada a cada panel y el registro |
+| `public/plataforma.html`, `js/plataforma.js` | La pantalla de la plataforma |
 | `server/auth.js` | Contraseñas y sesiones |
 | `server/backup.js` | Copias de seguridad diarias, locales y externas (S3/R2) |
 | `server/app.js` | La API: disponibilidad, reservas y panel |
@@ -175,8 +190,9 @@ Las variables están explicadas en `.env.example`. Importante: haz copias de seg
 ## Seguridad
 
 - **Panel:** se entra con una cuenta de rol administrador (correo o teléfono y contraseña), igual que los clientes. Una cuenta de cliente no puede entrar.
-  - El primer administrador se crea con `ADMIN_EMAIL` y `ADMIN_PASSWORD`. Nunca se convierte en administrador una cuenta que ya existía, porque alguien pudo registrarla antes con ese correo.
-  - Para dar o quitar acceso, desde el panel: **Ajustes → Equipo**. Desde la terminal del servidor: `npm run admin -- <negocio> correo@ejemplo.com` (o `--quitar`).
+  - Para dar o quitar acceso: desde la plataforma, desde **Ajustes → Equipo** del panel, o desde la terminal del servidor con `npm run admin -- <negocio> correo@ejemplo.com` (o `--quitar`).
+  - La plataforma tiene su propia base de datos (`plataforma.db`) y su propia cookie (`SameSite=Strict`).
+  - La entrada a un panel desde la plataforma va firmada (HMAC), está atada a ese negocio y queda en el registro.
   - Quitarle el acceso a alguien cierra sus sesiones abiertas.
 - **Cuentas de clientes:**
   - Las contraseñas se guardan cifradas con scrypt.
