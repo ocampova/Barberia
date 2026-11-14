@@ -247,6 +247,15 @@ function createPlatformAdmin({ tenants, pdb, env = process.env, log = console, c
     return { status: 201, body: r };
   });
 
+  // Descarga una copia recién hecha de la base de datos de un negocio (SQLite comprimida con gzip).
+  route("GET", "/api/plataforma/negocios/:slug/copia/descargar", ({ params, admin }) => {
+    const t = tenantOf(params.slug);
+    const stamp = clock().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+    const data = t.backups.snapshot();
+    pdb.log(admin.id, t.slug, "descarga", `${t.slug}-${stamp}.db.gz`);
+    return { raw: { type: "application/gzip", filename: `${t.slug}-${stamp}.db.gz`, data } };
+  });
+
   route("GET", "/api/plataforma/registro", () => ({
     entries: pdb.logList(100).map((l) => ({ at: l.at, who: l.admin_name || null, negocio: l.negocio, action: l.action, detail: l.detail })),
   }));
@@ -300,6 +309,11 @@ function createPlatformAdmin({ tenants, pdb, env = process.env, log = console, c
       const admin = r.auth ? requireAdmin(req) : null;
       const body = await readJson(req);
       const out = await r.handler({ params: r.re.exec(url.pathname).groups || {}, body, ip, req, res, admin });
+      if (out && out.raw) {
+        res.writeHead(200, { "content-type": out.raw.type, "cache-control": "no-store",
+          "content-disposition": `attachment; filename="${out.raw.filename}"` });
+        return res.end(out.raw.data);
+      }
       if (out && out.status && out.body) return sendJson(res, out.status, out.body);
       sendJson(res, 200, out);
     } catch (e) {

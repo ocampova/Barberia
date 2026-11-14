@@ -5,7 +5,7 @@
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const fmtDate = (iso) => iso ? new Date(iso).toLocaleString("es-CR", { dateStyle: "medium", timeStyle: "short" }) : "—";
   const ACTIONS = { entrar: "entró al panel", login: "inició sesión", "login-fallido": "intento fallido de inicio de sesión",
-    "equipo-agregar": "dio acceso a", "equipo-quitar": "quitó el acceso a", copia: "hizo una copia", password: "cambió su contraseña" };
+    "equipo-agregar": "dio acceso a", "equipo-quitar": "quitó el acceso a", copia: "hizo una copia", descarga: "descargó una copia", password: "cambió su contraseña" };
 
   async function api(path, opts = {}) {
     const res = await fetch(path, { ...opts, credentials: "same-origin",
@@ -60,6 +60,7 @@
           <button class="btn btn--gold" data-enter="${esc(n.slug)}">Entrar al panel</button>
           <a class="btn btn--ghost" href="${esc(n.url || "#")}" target="_blank" rel="noopener">Abrir app</a>
           <button class="btn btn--ghost" data-backup="${esc(n.slug)}">Copia ahora</button>
+          <a class="btn btn--ghost" href="/api/plataforma/negocios/${esc(n.slug)}/copia/descargar" download>Descargar copia</a>
         </div>
         <details>
           <summary>Equipo del negocio (${s.team.length})</summary>

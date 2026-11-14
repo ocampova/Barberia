@@ -5,6 +5,8 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const http = require("node:http");
+const zlib = require("node:zlib");
+const { DatabaseSync } = require("node:sqlite");
 const { negocios } = require("../server/negocios");
 const { createPlatform } = require("../server/platform");
 
@@ -29,7 +31,7 @@ async function setup(t, env = ENV) {
       const cookie = [jar[host], extraCookie].filter(Boolean).join("; ");
       const req = http.request({ host: "127.0.0.1", port, method, path: p_, headers: { host, "content-type": "application/json",
         ...(cookie ? { cookie } : {}), ...(data ? { "content-length": Buffer.byteLength(data) } : {}) } }, (res) => {
-        let buf = ""; res.on("data", (c) => (buf += c));
+        let buf = ""; const parts = []; res.on("data", (c) => { parts.push(c); buf += c; });
         res.on("end", () => {
           for (const c of res.headers["set-cookie"] || []) {
             const [kv] = c.split(";"); const [k] = kv.split("=");
@@ -37,7 +39,7 @@ async function setup(t, env = ENV) {
             jar[host] = (kv.endsWith("=") ? others : [...others, kv]).join("; ");
           }
           let json = null; try { json = JSON.parse(buf); } catch {}
-          resolve({ status: res.statusCode, body: json, text: buf, headers: res.headers });
+          resolve({ status: res.statusCode, body: json, text: buf, raw: Buffer.concat(parts), headers: res.headers });
         });
       });
       req.on("error", reject); if (data) req.write(data); req.end();
@@ -155,4 +157,32 @@ test("PLATFORM_HOST: la plataforma también responde en otra dirección (p. ej. 
   assert.match(url, /^https:\/\/seimar\.elcorte\.app\/__plataforma/);
   // Los negocios siguen en sus direcciones
   assert.equal((await me(V, "GET", "/api/config")).body.slug, "victoraguilar");
+});
+
+test("copias de seguridad de cada negocio desde la plataforma", async (t) => {
+  const { browser } = await setup(t);
+  const me = browser();
+  assert.equal((await me(P, "GET", "/api/plataforma/negocios/seimar/copia/descargar")).status, 401);
+  await me(P, "POST", "/api/plataforma/login", { email: "allan@example.com", password: "clave-del-dueno" });
+  const rosa = browser();
+  await rosa(S, "POST", "/api/auth/register", { name: "Rosa Vargas", phone: "86001122", email: "rosa@example.com", password: "secreto123", acceptPrivacy: true });
+
+  const made = await me(P, "POST", "/api/plataforma/negocios/seimar/copia");
+  assert.equal(made.status, 201);
+  const s = (await me(P, "GET", "/api/plataforma/negocios")).body.negocios.find((n) => n.slug === "seimar");
+  assert.ok(s.stats.lastBackup.at);
+
+  const dl = await me(P, "GET", "/api/plataforma/negocios/seimar/copia/descargar");
+  assert.equal(dl.status, 200);
+  assert.equal(dl.headers["content-type"], "application/gzip");
+  assert.match(dl.headers["content-disposition"], /attachment; filename="seimar-.*\.db\.gz"/);
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "dl-")), "seimar.db");
+  fs.writeFileSync(file, zlib.gunzipSync(dl.raw));
+  const copy = new DatabaseSync(file);
+  assert.deepEqual(copy.prepare("SELECT email FROM users").all().map((u) => u.email), ["rosa@example.com"]);
+  copy.close();
+  // El panel del negocio ya no tiene copias
+  assert.equal((await me(S, "GET", "/api/admin/backups")).status, 404);
+  const log = (await me(P, "GET", "/api/plataforma/registro")).body.entries;
+  assert.ok(log.some((l) => l.action === "descarga" && l.negocio === "seimar"));
 });

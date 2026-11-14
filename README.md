@@ -176,7 +176,7 @@ Las variables están explicadas en `.env.example`. Importante: haz copias de seg
 
 - **Automáticas:** todos los días a partir de las 3:00 a.m. (hora de Costa Rica) se hace una copia de la base de datos, consistente aunque la app esté en uso. Se comprime y se guardan las últimas 7 en `/data/backups`.
 - **Fuera del servidor:** si se configuran las variables `BACKUP_S3_*`, cada copia se sube también a Cloudflare R2 (o a cualquier almacenamiento compatible con S3). Así no se pierde nada aunque falle Railway.
-- **Desde el panel**, en **Ajustes → Copias de seguridad**: "Hacer copia ahora" y "Descargar copia" (un archivo `.db.gz`).
+- **Desde la plataforma**, en la tarjeta de cada negocio: "Copia ahora" y "Descargar copia" (un archivo `.db.gz`). Los paneles de los negocios no tienen copias de seguridad.
 - **Restaurar:**
   1. Descomprime la copia: `gunzip barberia-....db.gz`.
   2. Detén el servicio.
@@ -188,7 +188,7 @@ Las variables están explicadas en `.env.example`. Importante: haz copias de seg
 1. En Cloudflare, ve a **R2 Object Storage** y luego a **Create bucket**, con el nombre `elcorte-backups`.
 2. En **R2 → Manage API tokens → Create API token**, elige permiso **Object Read & Write** solo para ese bucket. Copia el *Access Key ID*, el *Secret Access Key* y el *endpoint* (`https://<cuenta>.r2.cloudflarestorage.com`).
 3. En Railway, agrega `BACKUP_S3_ENDPOINT`, `BACKUP_S3_BUCKET`, `BACKUP_S3_ACCESS_KEY_ID` y `BACKUP_S3_SECRET_ACCESS_KEY`.
-4. En el panel, ve a **Ajustes → Hacer copia ahora**: debe decir "guardada fuera del servidor".
+4. En la plataforma, toca **Copia ahora** en un negocio: debe decir "guardada fuera del servidor".
 
 ## Seguridad
 

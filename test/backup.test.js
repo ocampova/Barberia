@@ -64,7 +64,7 @@ test("si el almacenamiento externo falla, el error se informa (y la copia local 
   assert.equal(bk.list().length, 1);
 });
 
-test("panel: hacer y descargar copias solo con cuenta de administrador", async (t) => {
+test("las copias de seguridad ya no están en el panel del negocio", async (t) => {
   const dir = tmpDir(t);
   const db = openDb(path.join(dir, "app.db"));
   const backups = createBackups({ db, dir: path.join(dir, "backups"), env: {}, log: { log() {} } });
@@ -74,27 +74,10 @@ test("panel: hacer y descargar copias solo con cuenta de administrador", async (
   await new Promise((ok) => server.listen(0, ok));
   t.after(() => server.close());
   const base = `http://127.0.0.1:${server.address().port}`;
-
-  assert.equal((await fetch(base + "/api/admin/backups/download")).status, 401);
   const login = await fetch(base + "/api/auth/login", { method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ login: "jefe@example.com", password: "clave-del-jefe" }) });
-  const cookie = login.headers.get("set-cookie").split(";")[0];
-  const H = { cookie, "content-type": "application/json" };
-
-  const made = await fetch(base + "/api/admin/backups", { method: "POST", headers: H });
-  assert.equal(made.status, 201);
-  const info = await (await fetch(base + "/api/admin/backups", { headers: H })).json();
-  assert.equal(info.enabled, true);
-  assert.equal(info.backups.length, 1);
-  assert.ok(info.last.at);
-
-  const dl = await fetch(base + "/api/admin/backups/download", { headers: H });
-  assert.equal(dl.status, 200);
-  assert.equal(dl.headers.get("content-type"), "application/gzip");
-  assert.match(dl.headers.get("content-disposition"), /attachment; filename="barberia-.*\.db\.gz"/);
-  const restored = path.join(dir, "bajada.db");
-  fs.writeFileSync(restored, zlib.gunzipSync(Buffer.from(await dl.arrayBuffer())));
-  const copy = new DatabaseSync(restored);
-  assert.equal(copy.prepare("SELECT email FROM users WHERE role = 'admin'").get().email, "jefe@example.com");
-  copy.close();
+  const H = { cookie: login.headers.get("set-cookie").split(";")[0], "content-type": "application/json" };
+  assert.equal((await fetch(base + "/api/admin/backups", { headers: H })).status, 404);
+  assert.equal((await fetch(base + "/api/admin/backups", { method: "POST", headers: H })).status, 404);
+  assert.equal((await fetch(base + "/api/admin/backups/download", { headers: H })).status, 404);
 });

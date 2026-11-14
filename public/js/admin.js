@@ -75,7 +75,6 @@
     $("#team").hidden = false;
     renderTeam();
     renderSources(90);
-    renderBackups();
     try { $("#set-cancel").value = String((await api("/api/admin/settings")).cancelHours); } catch {}
   }
   $("#set-cancel").addEventListener("change", async (e) => {
@@ -84,17 +83,6 @@
       toast(r.cancelHours ? `Cancelación hasta ${r.cancelHours} h antes` : "Cancelación en cualquier momento");
     } catch (err) { toast(err.message); }
   });
-  async function renderBackups() {
-    try {
-      const r = await api("/api/admin/backups");
-      if (!r.enabled) { $("#bk-status").textContent = "Las copias automáticas no están activas en este servidor."; return; }
-      const last = r.last ? new Date(r.last.at).toLocaleString("es-CR", { dateStyle: "medium", timeStyle: "short" }) : "todavía ninguna";
-      $("#bk-status").innerHTML = `Copia automática todos los días a las 3:00 a.m. Última: <strong>${esc(last)}</strong>.<br>` +
-        (r.offsite ? "✅ También se guardan fuera del servidor (almacenamiento externo)." :
-          "⚠ Solo se guardan en el disco del servidor. Descarga una copia de vez en cuando o configura el almacenamiento externo.");
-    } catch (err) { $("#bk-status").textContent = err.message; }
-  }
-
   async function renderSources(days) {
     $$("#src-range button").forEach((b) => b.classList.toggle("is-active", Number(b.dataset.srcDays) === days));
     try {
@@ -295,13 +283,6 @@
     switch (ds.action) {
       case "logout": return logout();
       case "team": return openTeam();
-      case "backup-now": {
-        el.disabled = true;
-        try { const r = await api("/api/admin/backups", { method: "POST" }); toast(r.uploaded ? "Copia hecha y guardada fuera del servidor" : "Copia hecha"); renderBackups(); }
-        catch (err) { toast(err.message); }
-        finally { el.disabled = false; }
-        return;
-      }
       case "close-team": $("#team").hidden = true; return;
       case "new-booking": return openNew();
       case "close-new": $("#new-booking").hidden = true; return;

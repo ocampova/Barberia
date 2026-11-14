@@ -441,25 +441,7 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
   /* ---------- Panel ---------- */
   route("GET", "/api/admin/settings", () => ({ cancelHours: cancelHours() }), { admin: true });
 
-  /* ---------- Copias de seguridad (panel) ---------- */
-  route("GET", "/api/admin/backups", () => {
-    if (!backups) return { enabled: false, offsite: false, backups: [], last: null };
-    return { enabled: true, offsite: backups.offsite, backups: backups.list().slice(0, 7), last: repo.setting("lastBackup", null) };
-  }, { admin: true });
-
-  route("POST", "/api/admin/backups", async () => {
-    if (!backups) throw new HttpError(503, "Las copias de seguridad no están activas en este servidor.");
-    const r = await backups.run("manual desde el panel");
-    repo.settingSet("lastBackup", { at: new Date().toISOString(), name: r.name, uploaded: r.uploaded });
-    return { status: 201, body: r };
-  }, { admin: true });
-
-  // Descarga una copia recién hecha (gzip de la base de datos SQLite).
-  route("GET", "/api/admin/backups/download", () => {
-    if (!backups) throw new HttpError(503, "Las copias de seguridad no están activas en este servidor.");
-    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
-    return { raw: { type: "application/gzip", filename: `barberia-${stamp}.db.gz`, data: backups.snapshot() } };
-  }, { admin: true });
+  // Las copias de seguridad se manejan desde la plataforma (server/platform-admin.js).
 
   route("PUT", "/api/admin/settings", ({ body }) => {
     const h = Number(body.cancelHours);
