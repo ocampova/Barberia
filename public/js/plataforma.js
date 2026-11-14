@@ -5,7 +5,7 @@
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const fmtDate = (iso) => iso ? new Date(iso).toLocaleString("es-CR", { dateStyle: "medium", timeStyle: "short" }) : "—";
   const ACTIONS = { entrar: "entró al panel", login: "inició sesión", "login-fallido": "intento fallido de inicio de sesión",
-    "equipo-agregar": "dio acceso a", "equipo-quitar": "quitó el acceso a", copia: "hizo una copia", contacto: "cambió los datos de contacto",  descarga: "descargó una copia", password: "cambió su contraseña" };
+    "equipo-agregar": "dio acceso a", "equipo-quitar": "quitó el acceso a", copia: "hizo una copia", contacto: "cambió los datos de contacto", "contacto-panel": "cambió sus datos de contacto desde el panel",  descarga: "descargó una copia", password: "cambió su contraseña" };
 
   async function api(path, opts = {}) {
     const res = await fetch(path, { ...opts, credentials: "same-origin",
@@ -74,15 +74,19 @@
         </div>
         <details class="biz__contact">
           <summary>Datos de contacto${twin || !c.replyTo ? ` <span class="warn">⚠</span>` : ""}</summary>
-          <p class="biz__meta">Teléfono ${esc(fmtPhone(c.phone))} · WhatsApp ${esc(fmtWa(c.whatsapp))}<br>Respuestas a correos: ${esc(c.replyTo || "nadie (no se pueden responder)")}</p>
+          <p class="biz__meta">Teléfono ${esc(fmtPhone(c.phone))} · WhatsApp ${esc(fmtWa(c.whatsapp))}<br>
+            Instagram ${c.instagram ? "@" + esc(c.instagram) : "—"} · Facebook ${c.facebook ? esc(c.facebook) : "—"}<br>
+            Respuestas a correos: ${esc(c.replyTo || "nadie (no se pueden responder)")}</p>
           ${twin ? `<p class="adm-hint warn">⚠ Usa el mismo número que ${esc(twin.name)}.</p>` : ""}
           <form class="contact-form" data-contact="${esc(n.slug)}" novalidate>
             <label><span>Teléfono</span><input name="phone" inputmode="tel" value="${esc(fmtPhone(c.phone))}" /></label>
             <label><span>WhatsApp (con código de país; vacío = el teléfono)</span><input name="whatsapp" inputmode="tel" value="${esc(c.whatsapp)}" /></label>
+            <label><span>Instagram</span><input name="instagram" autocapitalize="off" value="${c.instagram ? "@" + esc(c.instagram) : ""}" placeholder="@usuario" /></label>
+            <label><span>Facebook (enlace de la página)</span><input name="facebook" autocapitalize="off" value="${c.facebook ? "facebook.com/" + esc(c.facebook) : ""}" placeholder="facebook.com/pagina" /></label>
             <label><span>Correo para respuestas de clientes</span><input name="replyTo" type="email" inputmode="email" value="${esc(c.replyTo)}" placeholder="correo@ejemplo.com" /></label>
             <button class="btn btn--gold">Guardar contacto</button>
           </form>
-          <p class="adm-hint" style="margin:6px 0 0">Se usan en la app, en los correos y en los botones de WhatsApp. El cambio se aplica al instante.</p>
+          <p class="adm-hint" style="margin:6px 0 0">El negocio también los puede cambiar desde su panel (Ajustes). Se usan en la app y en los correos, al instante.</p>
         </details>
         <details>
           <summary>Equipo del negocio (${s.team.length})</summary>
@@ -101,7 +105,7 @@
       const btn = f.querySelector("button"); btn.disabled = true;
       try {
         await api(`/api/plataforma/negocios/${f.dataset.contact}/contacto`, { method: "PUT",
-          body: { phone: f.phone.value, whatsapp: f.whatsapp.value, replyTo: f.replyTo.value } });
+          body: { phone: f.phone.value, whatsapp: f.whatsapp.value, instagram: f.instagram.value, facebook: f.facebook.value, replyTo: f.replyTo.value } });
         toast("Datos de contacto guardados"); render(); renderLog();
       } catch (err) { toast(err.message); } finally { btn.disabled = false; }
     }));
@@ -115,7 +119,9 @@
   async function renderLog() {
     const { entries } = await api("/api/plataforma/registro");
     $("#log").innerHTML = entries.length ? entries.slice(0, 40).map((l) => `<div><time>${esc(fmtDate(l.at))}</time>
-      <span>${esc(l.who || "Alguien")} ${esc(ACTIONS[l.action] || l.action)}${l.detail && l.action !== "entrar" ? ` <em>${esc(l.detail)}</em>` : ""}${l.negocio ? ` · <em>${esc(l.negocio)}</em>` : ""}</span></div>`).join("")
+      <span>${l.action === "contacto-panel"
+        ? `${esc(l.detail.split(" · ")[0])} ${esc(ACTIONS[l.action])} <em>${esc(l.detail.split(" · ").slice(1).join(" · "))}</em>`
+        : `${esc(l.who || "Alguien")} ${esc(ACTIONS[l.action] || l.action)}${l.detail && l.action !== "entrar" ? ` <em>${esc(l.detail)}</em>` : ""}`}${l.negocio ? ` · <em>${esc(l.negocio)}</em>` : ""}</span></div>`).join("")
       : `<p class="adm-hint">Sin actividad todavía.</p>`;
   }
 

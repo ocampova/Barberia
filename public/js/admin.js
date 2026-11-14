@@ -76,6 +76,7 @@
   async function openTeam() {
     $("#team").hidden = false;
     renderTeam();
+    renderContact();
     try {
       const s = await api("/api/admin/settings");
       $("#set-cancel").value = String(s.cancelHours);
@@ -85,6 +86,29 @@
         : "⚠ El envío de correos no está activo en este servidor: por ahora no salen recordatorios.";
     } catch {}
   }
+  /* ---------- Datos de contacto ---------- */
+  const fillContact = (c) => {
+    const f = $("#contact-form");
+    f.phone.value = String(c.phone || "").replace(/^(\d{4})(\d{4})$/, "$1 $2");
+    f.whatsapp.value = c.whatsapp || "";
+    f.instagram.value = c.instagram ? "@" + c.instagram : "";
+    f.facebook.value = c.facebook ? "facebook.com/" + c.facebook : "";
+    f.replyTo.value = c.replyTo || "";
+  };
+  async function renderContact() {
+    try { fillContact((await api("/api/admin/contact")).contact); } catch (err) { toast(err.message); }
+  }
+  $("#contact-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = e.target, btn = f.querySelector("button");
+    btn.disabled = true;
+    try {
+      const { contact } = await api("/api/admin/contact", { method: "PUT", body: {
+        phone: f.phone.value, whatsapp: f.whatsapp.value, instagram: f.instagram.value, facebook: f.facebook.value, replyTo: f.replyTo.value } });
+      fillContact(contact); toast("Datos de contacto guardados");
+    } catch (err) { toast(err.message); } finally { btn.disabled = false; }
+  });
+
   // Si el valor guardado no está en la lista, se agrega como opción.
   function setSelect(sel, v) {
     if (![...sel.options].some((o) => o.value === String(v))) sel.add(new Option(`${v} horas antes`, String(v)));

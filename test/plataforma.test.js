@@ -230,7 +230,7 @@ test("datos de contacto de cada negocio: se editan en la plataforma y se aplican
 
   const ok = await call(P, "PUT", "/api/plataforma/negocios/seimar/contacto", { phone: "8888 7777", whatsapp: "", replyTo: " Seidy@Example.com " });
   assert.equal(ok.status, 200);
-  assert.deepEqual(ok.body.contact, { phone: "88887777", whatsapp: "50688887777", replyTo: "seidy@example.com" });
+  assert.deepEqual(ok.body.contact, { phone: "88887777", whatsapp: "50688887777", replyTo: "seidy@example.com", instagram: "", facebook: "" });
 
   // La app, las páginas y los correos de Seimar lo usan de inmediato; la barbería no cambia
   const cfg = (await call(S, "GET", "/api/config")).body;
@@ -256,3 +256,44 @@ test("datos de contacto de cada negocio: se editan en la plataforma y se aplican
   assert.equal((await srv.call(S, "GET", "/api/config")).body.phone, "88887777");
 });
 
+
+test("cada negocio mantiene sus datos de contacto y redes desde su panel", async (t) => {
+  const { browser, p } = await setup(t);
+  const me = browser();
+  await me(P, "POST", "/api/plataforma/login", { email: "allan@example.com", password: "clave-del-dueno" });
+  // Seidy: cuenta en Seimar con acceso al panel
+  const seidy = browser();
+  await seidy(S, "POST", "/api/auth/register", { name: "Seidy Matamoros", phone: "87001234", email: "seidy@example.com", password: "clave-de-seidy", acceptPrivacy: true });
+  const cliente = browser();
+  await cliente(S, "POST", "/api/auth/register", { name: "Rosa Vargas", phone: "86001122", email: "rosa@example.com", password: "secreto123", acceptPrivacy: true });
+  assert.equal((await seidy(S, "PUT", "/api/admin/contact", { phone: "88887777" })).status, 403);
+  await me(P, "POST", "/api/plataforma/negocios/seimar/equipo", { login: "seidy@example.com" });
+
+  assert.equal((await cliente(S, "PUT", "/api/admin/contact", { phone: "88887777" })).status, 403);
+  for (const bad of [{ instagram: "no válido!" }, { facebook: "x y z" }, { replyTo: "nope" }])
+    assert.equal((await seidy(S, "PUT", "/api/admin/contact", bad)).status, 400, JSON.stringify(bad));
+
+  const r = await seidy(S, "PUT", "/api/admin/contact", {
+    phone: "8888-7777", whatsapp: "", instagram: "https://www.instagram.com/seimar.salon/?hl=es",
+    facebook: "https://m.facebook.com/SeimarSalon/", replyTo: "Seidy@Example.com" });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.contact, { phone: "88887777", whatsapp: "50688887777", replyTo: "seidy@example.com",
+    instagram: "seimar.salon", facebook: "SeimarSalon" });
+  // Cambiar solo un campo mantiene los demás
+  const r2 = await seidy(S, "PUT", "/api/admin/contact", { instagram: "@seimarsalon" });
+  assert.deepEqual([r2.body.contact.instagram, r2.body.contact.facebook, r2.body.contact.phone], ["seimarsalon", "SeimarSalon", "88887777"]);
+  assert.equal((await seidy(S, "PUT", "/api/admin/contact", { facebook: "https://facebook.com/profile.php?id=1234567" })).body.contact.facebook, "profile.php?id=1234567");
+
+  // La app pública muestra las redes; el correo de respuestas no se publica
+  const cfg = (await cliente(S, "GET", "/api/config")).body;
+  assert.deepEqual([cfg.instagram, cfg.facebook, cfg.phone], ["seimarsalon", "profile.php?id=1234567", "88887777"]);
+  assert.ok(!("replyTo" in cfg));
+  // La barbería no cambia
+  assert.deepEqual([(await me(V, "GET", "/api/config")).body.instagram], [""]);
+  // La plataforma lo ve y queda en su registro, con el nombre de quien lo cambió
+  const sm = (await me(P, "GET", "/api/plataforma/negocios")).body.negocios.find((n) => n.slug === "seimar");
+  assert.equal(sm.contact.instagram, "seimarsalon");
+  const log = (await me(P, "GET", "/api/plataforma/registro")).body.entries;
+  assert.ok(log.some((l) => l.action === "contacto-panel" && l.negocio === "seimar" && /^Seidy Matamoros · .*Instagram: seimarsalon/.test(l.detail)));
+  assert.ok(p);
+});

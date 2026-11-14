@@ -34,7 +34,7 @@ function limiter(max, windowMs) {
   };
 }
 
-function createApp({ repo, config, env = process.env, clock = () => new Date(), notify, mailer, backups = null, related = [], platformAuth = null }) {
+function createApp({ repo, config, env = process.env, clock = () => new Date(), notify, mailer, backups = null, related = [], platformAuth = null, audit = null }) {
   // Copia propia: los datos de contacto se pueden cambiar desde la plataforma sin tocar el archivo del negocio.
   config = { ...config, replyTo: config.replyTo || env.EMAIL_REPLY_TO || "" };
   /* ---------- Servicios ---------- */
@@ -282,7 +282,7 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
       slotStepMinutes, daysAhead, policies, categories, theme, logos } = config;
     const all = repo.services();
     return { slug, name, shortName: shortName || name, tagline, place, dePlace: dePlace(place), hero, slogan, city, location, mapsUrl, phone, whatsapp, currency,
-      theme, logos, related,
+      theme, logos, related, instagram: config.instagram || "", facebook: config.facebook || "",
       slotStepMinutes, daysAhead, policies,
       categories: categories.map(({ id, name, staff, brand, place }) => ({ id, name, staff: staff || null, brand: brand || name, place: place || null })),
       status: openStatus(categories[0].id),
@@ -478,6 +478,13 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     take("reminderExtraHours", 24, "El segundo recordatorio debe ser entre 0 y 24 horas antes.");
     if (!Object.keys(out).length) throw new HttpError(400, "Nada que cambiar.");
     return out;
+  }, { admin: true });
+
+  // Datos de contacto: cada negocio los mantiene desde su panel (la plataforma también puede).
+  route("GET", "/api/admin/contact", () => ({ contact: contact() }), { admin: true });
+  route("PUT", "/api/admin/contact", ({ body, req }) => {
+    const me = requireAdmin(req);
+    return { contact: setContact(body, me.platform ? `${me.name} (desde la plataforma)` : me.name) };
   }, { admin: true });
 
   // "¿Cómo nos conociste?": el resumen está en la plataforma (server/platform-admin.js), no en el panel.
@@ -774,7 +781,24 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
 
   /* ---------- Datos de contacto (editables desde la plataforma) ---------- */
   const digits = (s) => String(s ?? "").replace(/\D/g, "");
-  function contact() { return { phone: config.phone || "", whatsapp: config.whatsapp || "", replyTo: config.replyTo || "" }; }
+  const CONTACT_LABELS = { phone: "teléfono", whatsapp: "WhatsApp", replyTo: "correo para respuestas", instagram: "Instagram", facebook: "Facebook" };
+  function contact() {
+    return { phone: config.phone || "", whatsapp: config.whatsapp || "", replyTo: config.replyTo || "",
+      instagram: config.instagram || "", facebook: config.facebook || "" };
+  }
+  // Instagram: se guarda el usuario (sin @). Acepta "@usuario", "usuario" o el enlace del perfil.
+  function cleanInstagram(v) {
+    let s = String(v ?? "").trim().replace(/^https?:\/\/(www\.)?instagram\.com\//i, "").replace(/^@/, "").replace(/[/?#].*$/, "");
+    if (s && !/^[A-Za-z0-9._]{1,30}$/.test(s)) throw new HttpError(400, "El usuario de Instagram no es válido (por ejemplo: @mibarberia).");
+    return s;
+  }
+  // Facebook: se guarda la página (lo que va después de facebook.com/). Acepta el enlace completo o solo el nombre.
+  function cleanFacebook(v) {
+    let s = String(v ?? "").trim().replace(/^https?:\/\/((www|m|web)\.)?(facebook|fb)\.com\//i, "").replace(/^@/, "").replace(/#.*$/, "").replace(/\/+$/, "");
+    if (!/^profile\.php\?id=\d+$/.test(s)) s = s.replace(/\?.*$/, "");
+    if (s && !/^([A-Za-z0-9.\-]{2,80}|profile\.php\?id=\d+)$/.test(s)) throw new HttpError(400, "La página de Facebook no es válida (copia el enlace de la página).");
+    return s;
+  }
   function applyContact(c) {
     if (!c) return;
     Object.assign(config, c);
@@ -783,7 +807,10 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     pageCache.clear(); // las páginas llevan el teléfono y el WhatsApp
   }
   // Valida, guarda en la base del negocio y aplica de inmediato. Devuelve los datos como quedaron.
-  function setContact(body = {}) {
+  // Los campos que no vienen se mantienen. `who` (opcional) queda en el registro de la plataforma.
+  function setContact(input = {}, who = null) {
+    const before = contact();
+    const body = { ...before, ...Object.fromEntries(Object.entries(input).filter(([k, v]) => k in before && v !== undefined)) };
     const cc = String(config.countryCode || "506");
     const phone = digits(body.phone);
     if (!/^\d{8,15}$/.test(phone)) throw new HttpError(400, "El teléfono debe tener al menos 8 dígitos.");
@@ -792,10 +819,13 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
     if (!/^\d{10,15}$/.test(wa)) throw new HttpError(400, "El WhatsApp debe llevar el código de país (por ejemplo 506 y el número).");
     const replyTo = String(body.replyTo || "").trim().toLowerCase();
     if (replyTo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(replyTo)) throw new HttpError(400, "El correo para respuestas no es válido.");
-    const c = { phone, whatsapp: wa, replyTo };
+    const c = { phone, whatsapp: wa, replyTo, instagram: cleanInstagram(body.instagram), facebook: cleanFacebook(body.facebook) };
     repo.settingSet("contact", c);
     applyContact(c);
-    return contact();
+    const after = contact();
+    const changes = Object.keys(after).filter((k) => before[k] !== after[k]);
+    if (who && changes.length && audit) audit(who, changes.map((k) => `${CONTACT_LABELS[k]}: ${after[k] || "(vacío)"}`).join(" · "));
+    return after;
   }
 
   function renderPage(file, st) {

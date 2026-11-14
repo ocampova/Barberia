@@ -134,7 +134,9 @@ function createPlatform({ negocios, dataDir, env = process.env, defaultSlug, clo
       const o = negocios.find((x) => x.slug === rel.slug);
       return o && { slug: o.slug, name: o.name, logo: o.logos.main, url: urlOf(o), pitch: rel.pitch || "" };
     }).filter((x) => x && x.url);
-    const app = createApp({ repo: r, config: n, env: nEnv, backups, clock, mailer, related, platformAuth });
+    // Cambios que el negocio hace desde su panel (p. ej. sus datos de contacto) quedan en el registro de la plataforma.
+    const audit = (who, detail) => { try { pdb.log(null, n.slug, "contacto-panel", `${who} · ${detail}`); } catch {} };
+    const app = createApp({ repo: r, config: n, env: nEnv, backups, clock, mailer, related, platformAuth, audit });
     return { slug: n.slug, config: n, db, repo: r, app, backups, url: urlOf(n), dbFile: fileOf(n) };
   });
 

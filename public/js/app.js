@@ -97,6 +97,11 @@
         <span class="related__go" aria-hidden="true">›</span>
       </a>`).join("");
     $("#phone-label").textContent = B.phone.replace(/(\d{4})(\d{4})/, "$1 $2");
+    // Redes sociales: solo si el negocio las configuró
+    $("#ig-link").hidden = !B.instagram;
+    if (B.instagram) { $("#ig-link").href = `https://instagram.com/${encodeURIComponent(B.instagram)}`; $("#ig-label").textContent = "@" + B.instagram; }
+    $("#fb-link").hidden = !B.facebook;
+    if (B.facebook) $("#fb-link").href = `https://www.facebook.com/${B.facebook.split("?").map(encodeURI).join("?")}`;
 
     const quick = SERVICES.find((x) => x.popular) || SERVICES[0];
     if (!quick) { $("#today-slots").innerHTML = ""; return; }

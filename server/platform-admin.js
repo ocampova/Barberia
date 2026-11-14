@@ -261,7 +261,8 @@ function createPlatformAdmin({ tenants, pdb, env = process.env, log = console, c
     const before = t.app.contact();
     const after = t.app.setContact(body);
     const changes = Object.keys(after).filter((k) => before[k] !== after[k]);
-    if (changes.length) pdb.log(admin.id, t.slug, "contacto", changes.map((k) => `${{ phone: "teléfono", whatsapp: "WhatsApp", replyTo: "correo para respuestas" }[k]}: ${after[k] || "(vacío)"}`).join(" · "));
+    const LABELS = { phone: "teléfono", whatsapp: "WhatsApp", replyTo: "correo para respuestas", instagram: "Instagram", facebook: "Facebook" };
+    if (changes.length) pdb.log(admin.id, t.slug, "contacto", changes.map((k) => `${LABELS[k]}: ${after[k] || "(vacío)"}`).join(" · "));
     return { contact: after };
   });
 

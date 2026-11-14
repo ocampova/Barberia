@@ -18,6 +18,15 @@ function mix(hex, alpha, bg = [11, 10, 9]) {
   return "#" + c.map((v, i) => Math.round(v * alpha + bg[i] * (1 - alpha)).toString(16).padStart(2, "0")).join("");
 }
 
+// Enlaces a Instagram y Facebook del negocio (si los configuró).
+function social(config, color) {
+  const links = [
+    config.instagram && [`https://instagram.com/${config.instagram}`, `Instagram @${config.instagram}`],
+    config.facebook && [`https://www.facebook.com/${config.facebook}`, "Facebook"],
+  ].filter(Boolean);
+  return links.length ? links.map(([href, label]) => `<a href="${esc(href)}" style="color:${color};">${esc(label)}</a>`).join(" · ") + "<br>" : "";
+}
+
 const KINDS = {
   recibida: {
     subject: (b) => `Recibimos tu solicitud de cita · ${b.brand}`,
@@ -136,6 +145,7 @@ function render(kind, b, config, { link = null, siteUrl = null, byClient = false
   <tr><td style="padding:22px 10px 0;text-align:center;font-size:13px;line-height:1.6;color:${muted};">
     ¿Dudas? Escríbenos por WhatsApp al <a href="https://wa.me/${esc(config.whatsapp)}" style="color:${gold};">${esc(config.phone.replace(/(\d{4})(\d{4})/, "$1 $2"))}</a><br>
     ${esc(config.location)}<br>
+    ${social(config, gold)}
     <span style="font-size:11px;letter-spacing:3px;text-transform:uppercase;">${esc(config.slogan)}</span>
   </td></tr>
 </table>

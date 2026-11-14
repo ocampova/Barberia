@@ -60,8 +60,9 @@ Es la vista del dueño de la aplicación, para administrar todos los negocios:
   - acciones: **Copia ahora** y **Abrir app**.
 - **Entrar al panel:** abre el panel de ese negocio con un pase de un solo uso de 60 segundos. La entrada dura 8 horas, sirve solo para ese negocio y muestra el aviso "Modo plataforma".
 - **Equipo de cada negocio:** la persona crea su cuenta en la app del negocio, y después le das acceso con su correo o teléfono.
-- **Datos de contacto de cada negocio:** teléfono, WhatsApp y correo para las respuestas de los clientes.
-  - Se editan en la tarjeta del negocio y se aplican al instante en la app, el aviso de privacidad y los correos.
+- **Datos de contacto de cada negocio:** teléfono, WhatsApp, Instagram, Facebook y correo para las respuestas de los clientes.
+  - **Cada negocio los mantiene desde su panel** (**Ajustes → Datos de contacto**). La plataforma también los puede editar, y cada cambio queda en el registro con el nombre de quien lo hizo.
+  - Se aplican al instante en la app (Instagram y Facebook aparecen solo si están llenos), el aviso de privacidad y los correos.
   - Se guardan en la base de datos del negocio. Los del archivo `server/negocios/<slug>.js` son solo los valores iniciales.
   - Un ⚠ avisa si dos negocios comparten número o si falta el correo para respuestas.
 - **¿Cómo los conocieron?:** lo que respondieron los clientes al registrarse, de los últimos 30 días y desde el inicio. Los negocios no lo ven.

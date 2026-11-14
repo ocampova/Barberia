@@ -258,6 +258,19 @@
       </header>
       <div class="flow__body pane">
         <section class="card-form">
+          <h2>Datos de contacto</h2>
+          <p class="adm-hint" style="margin:0 0 10px">Aparecen en la app y en los correos que reciben tus clientes.</p>
+          <form id="contact-form" novalidate>
+            <label class="field"><span>Teléfono</span><input name="phone" inputmode="tel" autocomplete="off" placeholder="8888 8888" /></label>
+            <label class="field"><span>WhatsApp <small>(vacío = el mismo teléfono)</small></span><input name="whatsapp" inputmode="tel" autocomplete="off" placeholder="506 8888 8888" /></label>
+            <label class="field"><span>Instagram</span><input name="instagram" autocomplete="off" autocapitalize="off" placeholder="@tunegocio" /></label>
+            <label class="field"><span>Facebook <small>(enlace de la página)</small></span><input name="facebook" autocomplete="off" autocapitalize="off" placeholder="facebook.com/tunegocio" /></label>
+            <label class="field"><span>Correo para respuestas <small>(si un cliente responde un correo, le llega aquí)</small></span><input name="replyTo" type="email" inputmode="email" autocomplete="off" autocapitalize="off" placeholder="correo@ejemplo.com" /></label>
+            <button class="btn btn--gold btn--block">Guardar datos de contacto</button>
+          </form>
+        </section>
+
+        <section class="card-form" style="margin-top:14px">
           <h2>Reglas de reserva</h2>
           <label class="field"><span>Los clientes pueden cancelar desde la app hasta…</span>
             <select id="set-cancel">

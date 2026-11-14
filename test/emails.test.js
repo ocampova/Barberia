@@ -44,3 +44,11 @@ test("correo de contraseña: logo y colores del negocio, desde su propia direcci
   assert.match(m.subject, /Cambia tu contraseña · /);
 });
 
+
+test("pie del correo: Instagram y Facebook solo si el negocio los tiene", () => {
+  const sin = render("confirmada", b, config, { link: "https://x/?citas=1" });
+  assert.ok(!/instagram\.com|facebook\.com/.test(sin.html));
+  const con = render("confirmada", b, { ...config, instagram: "victoraguilarbarberia", facebook: "VictorAguilarBarberia" }, { link: "https://x/?citas=1" });
+  assert.match(con.html, /href="https:\/\/instagram\.com\/victoraguilarbarberia"[^>]*>Instagram @victoraguilarbarberia</);
+  assert.match(con.html, /href="https:\/\/www\.facebook\.com\/VictorAguilarBarberia"/);
+});
