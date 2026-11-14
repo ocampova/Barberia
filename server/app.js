@@ -9,6 +9,7 @@ const { hashPassword, verifyPassword, DUMMY, newToken, tokenHash, parseCookies }
 const { createMailer } = require("./mailer");
 
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
+const assets = require("./assets");
 const MIME = {
   ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8", ".json": "application/json",
@@ -46,7 +47,7 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
   // Formato que usan la app y las plantillas de correo.
   const toPublicService = (s) => ({ id: s.id, cat: s.category, name: s.name, price: s.price, min: s.minutes,
     desc: s.description, popular: s.popular });
-  const configForEmail = () => ({ ...config, services: repo.services().map(toPublicService) });
+  const configForEmail = () => ({ ...config, logos: assets.versionLogos(config.logos), services: repo.services().map(toPublicService) });
   const bookingLimit = limiter(Number(env.BOOKING_RATE_LIMIT || 8), 60 * 60 * 1000);
   const userLoginLimit = limiter(Number(env.LOGIN_RATE_LIMIT || 10), 15 * 60 * 1000);
   const registerLimit = limiter(Number(env.REGISTER_RATE_LIMIT || 6), 60 * 60 * 1000);
@@ -282,7 +283,7 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
       slotStepMinutes, daysAhead, policies, categories, theme, logos } = config;
     const all = repo.services();
     return { slug, name, shortName: shortName || name, tagline, place, dePlace: dePlace(place), hero, slogan, city, location, mapsUrl, phone, whatsapp, currency,
-      theme, logos, related, instagram: config.instagram || "", facebook: config.facebook || "",
+      theme, logos: assets.versionLogos(logos), related, instagram: config.instagram || "", facebook: config.facebook || "",
       slotStepMinutes, daysAhead, policies,
       categories: categories.map(({ id, name, staff, brand, place }) => ({ id, name, staff: staff || null, brand: brand || name, place: place || null })),
       status: openStatus(categories[0].id),
@@ -442,7 +443,7 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
       const token = newToken();
       repo.resetPurgeUser(u.id);
       repo.resetInsert(tokenHash(token), u.id, Date.now() + 3600e3);
-      const msg = renderReset(u, config, `${site}/?reset=${token}`);
+      const msg = renderReset(u, configForEmail(), `${site}/?reset=${token}`);
       Promise.resolve(mail.send({ to: u.email, replyTo: config.replyTo, ...msg }))
         .catch((e) => console.error("No se pudo enviar el correo de contraseña:", e.message));
     }
@@ -839,9 +840,10 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
   function renderPage(file, st) {
     const hit = pageCache.get(file);
     if (hit && hit.mtime === st.mtimeMs) return hit;
-    const html = fs.readFileSync(file, "utf8")
+    let html = fs.readFileSync(file, "utf8")
       .replace("<!--MARCA-->", brandHead)
       .replace(/\{\{(\w+)\}\}/g, (m, k) => (k in brandTokens ? escHtml(brandTokens[k]) : m));
+    html = assets.rewriteHtml(html); // css/js/img con ?v=<huella>: nunca una copia vieja
     const out = { mtime: st.mtimeMs, body: Buffer.from(html), etag: `W/"${crypto.createHash("sha1").update(html).digest("hex").slice(0, 16)}"` };
     pageCache.set(file, out);
     return out;
@@ -849,9 +851,9 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
 
   function manifest() {
     const icons = [
-      config.logos.icon192 && { src: config.logos.icon192, sizes: "192x192", type: "image/png" },
-      config.logos.icon512 && { src: config.logos.icon512, sizes: "512x512", type: "image/png" },
-      { src: config.logos.main, sizes: "any", type: "image/svg+xml" },
+      config.logos.icon192 && { src: assets.versioned(config.logos.icon192), sizes: "192x192", type: "image/png" },
+      config.logos.icon512 && { src: assets.versioned(config.logos.icon512), sizes: "512x512", type: "image/png" },
+      { src: assets.versioned(config.logos.main), sizes: "any", type: "image/svg+xml" },
     ].filter(Boolean);
     return { name: config.name, short_name: config.shortName || config.name, description: config.description || config.name,
       start_url: "/", display: "standalone", background_color: bgColor, theme_color: bgColor, icons };
@@ -880,12 +882,11 @@ function createApp({ repo, config, env = process.env, clock = () => new Date(), 
         res.writeHead(200, h);
         return res.end(req.method === "HEAD" ? undefined : page.body);
       }
-      // "no-cache": el navegador siempre pregunta si hay una versión nueva; si no cambió,
-      // responde 304 sin reenviar el archivo. Así nunca queda una versión vieja de la app.
+      // Con la versión correcta (?v=) se guarda un año; sin ella, "no-cache": el navegador pregunta siempre.
       const etag = `W/"${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}"`;
       const headers = {
         "content-type": MIME[ext] || "application/octet-stream",
-        "cache-control": "no-cache",
+        "cache-control": assets.cacheControl(new URL(req.url, "http://x").searchParams, pathname),
         etag,
         "last-modified": st.mtime.toUTCString(),
       };

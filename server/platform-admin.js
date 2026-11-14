@@ -11,6 +11,7 @@ const { hashPassword, verifyPassword, DUMMY, newToken, tokenHash, parseCookies }
 const { addDays, nowIn } = require("./time");
 
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
+const assets = require("./assets");
 const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8",
   ".svg": "image/svg+xml", ".png": "image/png" };
 const COOKIE = "va_platform";       // sesión en plataforma.<dominio>
@@ -212,7 +213,7 @@ function createPlatformAdmin({ tenants, pdb, env = process.env, log = console, c
 
   route("GET", "/api/plataforma/negocios", () => ({
     negocios: tenants.map((t) => ({
-      slug: t.slug, name: t.config.name, place: t.config.place, url: t.url, logo: t.config.logos.main,
+      slug: t.slug, name: t.config.name, place: t.config.place, url: t.url, logo: assets.versioned(t.config.logos.main),
       accent: t.config.theme.accent, logoBg: t.config.theme.palette?.bg || "#0b0a09", contact: t.app.contact(), staff: t.config.categories.map((c) => c.staff).filter(Boolean),
       stats: stats(t),
     })),
@@ -305,7 +306,12 @@ function createPlatformAdmin({ tenants, pdb, env = process.env, log = console, c
     }
     const file = path.normalize(path.join(PUBLIC_DIR, pathname));
     if (!file.startsWith(PUBLIC_DIR + path.sep) || !fs.existsSync(file)) { res.writeHead(404); return res.end(); }
-    res.writeHead(200, { "content-type": MIME[path.extname(file)] || "application/octet-stream", "cache-control": "no-cache" });
+    if (pathname === "/plataforma.html") {
+      res.writeHead(200, { "content-type": MIME[".html"], "cache-control": "no-cache" });
+      return res.end(assets.rewriteHtml(fs.readFileSync(file, "utf8")));
+    }
+    res.writeHead(200, { "content-type": MIME[path.extname(file)] || "application/octet-stream",
+      "cache-control": assets.cacheControl(new URL(req.url, "http://x").searchParams, pathname) });
     fs.createReadStream(file).pipe(res);
   }
 

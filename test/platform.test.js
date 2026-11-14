@@ -95,7 +95,7 @@ test("las páginas llevan la marca de su negocio (sin rastros del otro)", async 
   assert.ok(!priv.includes("Víctor"));
   const man = (await call("seimar.elcorte.app", "GET", "/manifest.webmanifest")).body;
   assert.equal(man.name, "Seimar Salón");
-  assert.equal(man.icons[0].src, "img/negocios/seimar/icon-192.png");
+  assert.match(man.icons[0].src, /^img\/negocios\/seimar\/icon-192\.png\?v=[0-9a-f]{10}$/);
   const vhome = (await call("victoraguilar.elcorte.app", "GET", "/")).text;
   assert.match(vhome, /html:root\{--gold:#c9a227/);
   assert.match(vhome, /Tu estilo,<br \/><em>nuestra prioridad<\/em>/);
@@ -209,3 +209,31 @@ test("correos: cada negocio envía con su nombre, y la dirección de respuesta g
   }
 });
 
+
+test("archivos con versión: un proxy con caché larga nunca sirve una copia vieja", async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "as-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const p = createPlatform({ negocios, dataDir: dir, env: { PUBLIC_URL: "https://victoraguilar.elcorte.app" }, clock, log: quiet, mailer: { enabled: false, send() {} } });
+  t.after(() => p.close());
+  const call = await serve(t, p.handler);
+  const home = (await call("seimar.elcorte.app", "GET", "/")).text;
+  // Todas las referencias a css/js/img de la página llevan ?v=
+  const refs = [...home.matchAll(/(?:href|src)="((?:css|js|img)\/[^"]+)"/g)].map((m) => m[1]);
+  assert.ok(refs.length >= 4);
+  for (const r of refs) assert.match(r, /\?v=[0-9a-f]{10}$/, r);
+  // La versión depende del contenido: el logo de Seimar y el de la barbería tienen versiones distintas
+  const css = refs.find((r) => r.startsWith("css/styles.css"));
+  const ok = await call("seimar.elcorte.app", "GET", "/" + css);
+  assert.equal(ok.status, 200);
+  assert.match(ok.headers["cache-control"], /max-age=31536000, immutable/);
+  // Sin versión (o con una vieja) el navegador siempre pregunta
+  assert.equal((await call("seimar.elcorte.app", "GET", "/css/styles.css")).headers["cache-control"], "no-cache");
+  assert.equal((await call("seimar.elcorte.app", "GET", "/css/styles.css?v=0000000000")).headers["cache-control"], "no-cache");
+  // La app y la plataforma reciben los logos con versión
+  const cfg = JSON.parse((await call("seimar.elcorte.app", "GET", "/api/config")).text);
+  assert.match(cfg.logos.main, /^img\/negocios\/seimar\/logo\.svg\?v=/);
+  assert.match(cfg.logos.email, /\?v=/);
+  const plat = (await call("plataforma.elcorte.app", "GET", "/")).text;
+  assert.match(plat, /href="css\/plataforma\.css\?v=[0-9a-f]{10}"/);
+  assert.match(plat, /src="js\/plataforma\.js\?v=[0-9a-f]{10}"/);
+});

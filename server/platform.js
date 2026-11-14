@@ -9,6 +9,7 @@ const { DatabaseSync } = require("node:sqlite");
 const { openDb, repo } = require("./db");
 const { createApp } = require("./app");
 const { createBackups } = require("./backup");
+const { versioned } = require("./assets");
 const { nowIn } = require("./time");
 const { openPlatformDb } = require("./platform-db");
 const { createPlatformAdmin } = require("./platform-admin");
@@ -132,7 +133,7 @@ function createPlatform({ negocios, dataDir, env = process.env, defaultSlug, clo
     const backups = createBackups({ db, dir: path.join(dataDir, "backups", n.slug), env: nEnv, log });
     const related = (n.related || []).map((rel) => {
       const o = negocios.find((x) => x.slug === rel.slug);
-      return o && { slug: o.slug, name: o.name, logo: o.logos.main, logoBg: o.theme.palette?.bg || "#0b0a09", url: urlOf(o), pitch: rel.pitch || "" };
+      return o && { slug: o.slug, name: o.name, logo: versioned(o.logos.main), logoBg: o.theme.palette?.bg || "#0b0a09", url: urlOf(o), pitch: rel.pitch || "" };
     }).filter((x) => x && x.url);
     // Cambios que el negocio hace desde su panel (p. ej. sus datos de contacto) quedan en el registro de la plataforma.
     const audit = (who, detail) => { try { pdb.log(null, n.slug, "contacto-panel", `${who} · ${detail}`); } catch {} };
