@@ -158,7 +158,9 @@ function createPlatform({ negocios, dataDir, env = process.env, defaultSlug, clo
 
   function isPlatformHost(hostHeader) {
     const host = hostOf(hostHeader);
-    return [domain, "localhost"].filter(Boolean).some((d) => host === `${PLATFORM_LABEL}.${d}`);
+    // PLATFORM_HOST: otra(s) dirección(es) para la plataforma, p. ej. la de Railway (*.up.railway.app)
+    const extra = String(env.PLATFORM_HOST || "").split(",").map((h) => hostOf(h.trim().replace(/^\w+:\/\//, "").split("/")[0])).filter(Boolean);
+    return extra.includes(host) || [domain, "localhost"].filter(Boolean).some((d) => host === `${PLATFORM_LABEL}.${d}`);
   }
 
   function handler(req, res) {

@@ -62,6 +62,8 @@ Es la vista del dueño de la aplicación, para administrar todos los negocios:
 - **Equipo de cada negocio:** la persona crea su cuenta en la app del negocio, y después le das acceso con su correo o teléfono.
 - **Registro de accesos:** inicios de sesión (también los fallidos), entradas a cada panel y cambios de equipo.
 
+**Dirección:** `plataforma.<dominio>`. Si tu plan de Railway ya no admite otro dominio propio, pon `PLATFORM_HOST` con la dirección que da Railway (por ejemplo `barberia-production-b09e4724.up.railway.app`) y la plataforma responde ahí. Puede ser una lista separada por comas.
+
 Si olvidas la contraseña de la plataforma, pon `ADMIN_PASSWORD` con una nueva y `ADMIN_FORCE=1`, despliega y entra. Luego **borra `ADMIN_FORCE`**.
 
 La primera vez que arrancó la plataforma, una **migración** pasó los datos del salón (servicios, horario, citas y las cuentas de quienes reservaron ahí) de la base de Víctor a la de Seimar, después de guardar una copia de seguridad (`/data/backups/antes-de-separar-salon-*.db`).
@@ -129,6 +131,7 @@ npm test             # pruebas automáticas
 | `ADMIN_EMAIL` | correo de tu cuenta de la plataforma |
 | `ADMIN_PASSWORD` | contraseña inicial de la plataforma (mínimo 8 caracteres); se cambia después desde la plataforma |
 | `ADMIN_NAME` | tu nombre |
+| `PLATFORM_HOST` | opcional: dirección extra para la plataforma, p. ej. `barberia-production-b09e4724.up.railway.app` |
 | `TRUST_PROXY` | `1` |
 | `RAILWAY_RUN_UID` | `0` (el volumen de Railway se monta como root) |
 | `ADMIN_FORCE` | Solo para recuperar el acceso a la plataforma: con `1`, al arrancar le pone a `ADMIN_EMAIL` la contraseña `ADMIN_PASSWORD`. **Bórrala después de entrar.** |

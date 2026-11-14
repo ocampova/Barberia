@@ -144,3 +144,15 @@ test("contraseña de la plataforma: exige la actual y cierra otras sesiones", as
   assert.equal((await b(P, "GET", "/api/plataforma/negocios")).status, 401);
   assert.equal((await browser()(P, "POST", "/api/plataforma/login", { email: "allan@example.com", password: "otra-clave-larga" })).status, 200);
 });
+
+test("PLATFORM_HOST: la plataforma también responde en otra dirección (p. ej. la de Railway)", async (t) => {
+  const R = "barberia-production-b09e4724.up.railway.app";
+  const { browser } = await setup(t, { ...ENV, PLATFORM_HOST: `https://${R}/` });
+  const me = browser();
+  assert.match((await me(R, "GET", "/")).text, /<title>Plataforma · El Corte<\/title>/);
+  assert.equal((await me(R, "POST", "/api/plataforma/login", { email: "allan@example.com", password: "clave-del-dueno" })).status, 200);
+  const { url } = (await me(R, "POST", "/api/plataforma/negocios/seimar/entrar")).body;
+  assert.match(url, /^https:\/\/seimar\.elcorte\.app\/__plataforma/);
+  // Los negocios siguen en sus direcciones
+  assert.equal((await me(V, "GET", "/api/config")).body.slug, "victoraguilar");
+});

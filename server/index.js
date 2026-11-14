@@ -22,6 +22,7 @@ const yesNo = (v) => (v ? "sí" : "no");
 console.log(`Configuración → datos: ${DATA_DIR} · dominio: ${platform.domain || "no"} · ADMIN_EMAIL: ${yesNo(process.env.ADMIN_EMAIL)} · ` +
   `TRUST_PROXY: ${yesNo(process.env.TRUST_PROXY)} · correos: ${yesNo(process.env.RESEND_API_KEY && process.env.EMAIL_FROM)} · ` +
   `copias externas: ${yesNo(process.env.BACKUP_S3_ENDPOINT)}`);
+if (process.env.PLATFORM_HOST) console.log(`Plataforma también en: ${process.env.PLATFORM_HOST}`);
 for (const t of platform.tenants) console.log(`Negocio ${t.slug}: ${t.config.name} → ${t.url || "(solo dirección por defecto)"}`);
 
 const server = http.createServer(platform.handler).listen(PORT, () => {
